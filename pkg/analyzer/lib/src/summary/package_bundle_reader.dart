@@ -384,6 +384,11 @@ class SummaryDataStore {
     }
     for (int i = 0; i < bundle.unlinkedUnitUris.length; i++) {
       String uri = bundle.unlinkedUnitUris[i];
+      if (uriToSummaryPath.containsKey(uri) &&
+          (uriToSummaryPath[uri] != path)) {
+        throw new Exception('${uriToSummaryPath[uri]} and $path conflict: '
+            'both cannot contain $uri');
+      }
       uriToSummaryPath[uri] = path;
       addUnlinkedUnit(uri, bundle.unlinkedUnits[i]);
     }

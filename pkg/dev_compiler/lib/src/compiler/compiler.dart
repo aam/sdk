@@ -87,8 +87,13 @@ class ModuleCompiler {
     var sdkResolver = new DartUriResolver(sdk);
 
     // Read the summaries.
-    summaryData ??= new SummaryDataStore(options.summaryPaths,
-        resourceProvider: resourceProvider, recordDependencyInfo: true);
+    try {
+      summaryData ??= new SummaryDataStore(options.summaryPaths,
+          resourceProvider: resourceProvider, recordDependencyInfo: true);
+    } catch (e) {
+      // TODO(vsm): Make a summary specific error check here.
+      // Conflicts
+    }
     var sdkSummaryBundle = sdk.getLinkedBundle();
     if (sdkSummaryBundle != null) {
       summaryData.addBundle(null, sdkSummaryBundle);
