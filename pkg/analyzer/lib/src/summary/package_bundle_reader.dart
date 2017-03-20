@@ -314,8 +314,10 @@ class ConflictingSummaryException extends Exception {
   final String summary1Uri;
   final String summary2Uri;
 
-  ConflictingSummaryException(this.duplicatedUri, this.summary1Uri, this.summary2Uri)
-    : super('$summary1Uri and $summary2Uri conflict: both should not contain $duplicatedUri');
+  ConflictingSummaryException(
+      this.duplicatedUri, this.summary1Uri, this.summary2Uri)
+      : super(
+            '$summary1Uri and $summary2Uri conflict: both should not contain $duplicatedUri');
 }
 
 /**
