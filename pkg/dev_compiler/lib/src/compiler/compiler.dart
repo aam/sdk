@@ -23,7 +23,7 @@ import 'package:analyzer/src/generated/source.dart'
 import 'package:analyzer/src/generated/source_io.dart'
     show Source, SourceKind, UriResolver;
 import 'package:analyzer/src/summary/package_bundle_reader.dart'
-    show InSummarySource, InputPackagesResultProvider, SummaryDataStore;
+    show ConflictingSummaryException, InSummarySource, InputPackagesResultProvider, SummaryDataStore;
 import 'package:args/args.dart' show ArgParser, ArgResults;
 import 'package:args/src/usage_exception.dart' show UsageException;
 import 'package:func/func.dart' show Func1;
@@ -90,7 +90,7 @@ class ModuleCompiler {
     try {
       summaryData ??= new SummaryDataStore(options.summaryPaths,
           resourceProvider: resourceProvider, recordDependencyInfo: true);
-    } catch (e) {
+    } on ConflictingSummaryException catch (e) {
       // TODO(vsm): Make a summary specific error check here.
       // Conflicts
     }
