@@ -309,15 +309,15 @@ class StoreBasedSummaryResynthesizer extends SummaryResynthesizer {
  * A [ConflictingSummaryException] indicates that two different summaries
  * provided to a [SummaryDataStore] conflict.
  */
-class ConflictingSummaryException extends Exception {
+class ConflictingSummaryException implements Exception {
   final String duplicatedUri;
   final String summary1Uri;
   final String summary2Uri;
 
   ConflictingSummaryException(
-      this.duplicatedUri, this.summary1Uri, this.summary2Uri)
-      : super(
-            '$summary1Uri and $summary2Uri conflict: both should not contain $duplicatedUri');
+      this.duplicatedUri, this.summary1Uri, this.summary2Uri);
+
+  String toString() => '$summary1Uri and $summary2Uri conflict: both should not contain $duplicatedUri';
 }
 
 /**
@@ -401,7 +401,7 @@ class SummaryDataStore {
       String uri = bundle.unlinkedUnitUris[i];
       if (uriToSummaryPath.containsKey(uri) &&
           (uriToSummaryPath[uri] != path)) {
-        throw ConflictingSummaryException(uri, uriToSummaryPath[uri], $path);
+        throw new ConflictingSummaryException(uri, uriToSummaryPath[uri], path);
       }
       uriToSummaryPath[uri] = path;
       addUnlinkedUnit(uri, bundle.unlinkedUnits[i]);
