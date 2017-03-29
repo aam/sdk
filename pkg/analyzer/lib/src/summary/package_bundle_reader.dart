@@ -317,7 +317,8 @@ class ConflictingSummaryException implements Exception {
   ConflictingSummaryException(
       this.duplicatedUri, this.summary1Uri, this.summary2Uri);
 
-  String toString() => '$summary1Uri and $summary2Uri conflict: both should not contain $duplicatedUri';
+  String toString() =>
+      '$summary1Uri and $summary2Uri conflict: both should not contain $duplicatedUri';
 }
 
 /**
