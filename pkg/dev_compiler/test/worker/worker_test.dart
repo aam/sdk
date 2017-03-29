@@ -188,7 +188,7 @@ main() {
       expect(helloJS.existsSync(), isTrue);
     });
 
-    test('reports error on duplicate summaries', () {
+    test('reports error on overlapping summaries', () {
       final dartSdkSummary = new File('lib/sdk/ddc_sdk.sum').absolute;
       var result = Process.runSync(Platform.executable, [
         'bin/dartdevc.dart',
@@ -237,11 +237,11 @@ main() {
         helloJS.path,
         helloDart.path,
       ]);
-      expect(result.exitCode, 70);
-      expect(result.stdout, isEmpty);
-      expect(result.stderr, isEmpty);
+      expect(result.exitCode, 65);
+      expect(result.stdout, contains("conflict"));
+      expect(result.stdout, contains(greetingDart.path));
       expect(helloJS.existsSync(), isFalse);
-    });  
+    });
   });
 
   group('Error handling', () {

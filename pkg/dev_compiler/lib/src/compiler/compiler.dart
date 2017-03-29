@@ -24,7 +24,6 @@ import 'package:analyzer/src/generated/source_io.dart'
     show Source, SourceKind, UriResolver;
 import 'package:analyzer/src/summary/package_bundle_reader.dart'
     show
-        ConflictingSummaryException,
         InSummarySource,
         InputPackagesResultProvider,
         SummaryDataStore;
@@ -91,13 +90,9 @@ class ModuleCompiler {
     var sdkResolver = new DartUriResolver(sdk);
 
     // Read the summaries.
-    try {
-      summaryData ??= new SummaryDataStore(options.summaryPaths,
-          resourceProvider: resourceProvider, recordDependencyInfo: true);
-    } on ConflictingSummaryException catch (e) {
-      // TODO(vsm): Make a summary specific error check here.
-      // Conflicts
-    }
+    summaryData ??= new SummaryDataStore(options.summaryPaths,
+      resourceProvider: resourceProvider, recordDependencyInfo: true);
+
     var sdkSummaryBundle = sdk.getLinkedBundle();
     if (sdkSummaryBundle != null) {
       summaryData.addBundle(null, sdkSummaryBundle);
