@@ -51,7 +51,6 @@ before_install:
   - cd sdk
 
   # If a C++ compiler is set, run hooks and build the SDK - else use the preinstalled SDK instead.
-  - export DART_USE_GYP=1
   - if [ "$CXX" ]; then gclient runhooks ; fi
   - if [ "$CXX" ]; then ./tools/build.py -m release create_sdk ; fi
   - if [ "$CXX" ]; then export PATH=`pwd`/out/ReleaseX64/dart-sdk/bin:"$PATH" ; fi
@@ -81,7 +80,7 @@ env:
   # TODO(vsm): We don't get much value from this for DDC & it eats up travis
   # cycles.  Consider adding back at some point to test the built dartdevc
   # snapshot.
-  # - ANALYZER=master CXX=clang++
+  - ANALYZER=master CXX=clang++
   - TEST=coverage
   - TEST=package
 matrix:
