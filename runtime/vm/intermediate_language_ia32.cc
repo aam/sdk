@@ -2858,12 +2858,21 @@ static bool IsSmiValue(const Object& constant, intptr_t value) {
   return constant.IsSmi() && (Smi::Cast(constant).Value() == value);
 }
 
+static intptr_t SpecializedDivisor() {
+  return 10;
+}
+
+static bool IsSpecializedTruncDivDivisor(Value* right) {
+  if (!right->definition()->IsConstant()) return false;
+  const Object& constant = right->definition()->AsConstant()->value();
+  return IsSmiValue(constant, SpecializedDivisor());
+}
 
 LocationSummary* BinarySmiOpInstr::MakeLocationSummary(Zone* zone,
                                                        bool opt) const {
   const intptr_t kNumInputs = 2;
   if (op_kind() == Token::kTRUNCDIV) {
-    const intptr_t kNumTemps = 1;
+    const intptr_t kNumTemps = IsSpecializedTruncDivDivisor(right()) ? 2: 1;
     LocationSummary* summary = new (zone)
         LocationSummary(zone, kNumInputs, kNumTemps, LocationSummary::kNoCall);
     if (RightIsPowerOfTwoConstant()) {
@@ -2873,6 +2882,15 @@ LocationSummary* BinarySmiOpInstr::MakeLocationSummary(Zone* zone,
       summary->set_in(1, Location::Constant(right_constant));
       summary->set_temp(0, Location::RequiresRegister());
       summary->set_out(0, Location::SameAsFirstInput());
+    } else if (IsSpecializedTruncDivDivisor(right())) {
+      summary->set_in(0, Location::RegisterLocation(EAX));
+      ConstantInstr* right_constant = right()->definition()->AsConstant();
+      // The programmer only controls one bit, so the constant is safe.
+      summary->set_in(1, Location::Constant(right_constant));
+      summary->set_out(0, Location::RegisterLocation(EAX));
+      // Will be used for multiplication.
+      summary->set_temp(0, Location::RegisterLocation(EDX));
+      summary->set_temp(1, Location::RequiresRegister());
     } else {
       // Both inputs must be writable because they will be untagged.
       summary->set_in(0, Location::RegisterLocation(EAX));
@@ -2997,22 +3015,39 @@ void BinarySmiOpInstr::EmitNativeCode(FlowGraphCompiler* compiler) {
       }
 
       case Token::kTRUNCDIV: {
-        ASSERT(Utils::IsPowerOfTwo(Utils::Abs(value)));
-        const intptr_t shift_count =
-            Utils::ShiftForPowerOfTwo(Utils::Abs(value)) + kSmiTagSize;
-        ASSERT(kSmiTagSize == 1);
-        Register temp = locs()->temp(0).reg();
-        __ movl(temp, left);
-        __ sarl(temp, Immediate(31));
-        ASSERT(shift_count > 1);  // 1, -1 case handled above.
-        __ shrl(temp, Immediate(32 - shift_count));
-        __ addl(left, temp);
-        ASSERT(shift_count > 0);
-        __ sarl(left, Immediate(shift_count));
-        if (value < 0) {
-          __ negl(left);
+        if (Utils::IsPowerOfTwo(Utils::Abs(value))) {
+          const intptr_t shift_count =
+              Utils::ShiftForPowerOfTwo(Utils::Abs(value)) + kSmiTagSize;
+          ASSERT(kSmiTagSize == 1);
+          Register temp = locs()->temp(0).reg();
+          __ movl(temp, left);
+          __ sarl(temp, Immediate(31));
+          ASSERT(shift_count > 1);  // 1, -1 case handled above.
+          __ shrl(temp, Immediate(32 - shift_count));
+          __ addl(left, temp);
+          ASSERT(shift_count > 0);
+          __ sarl(left, Immediate(shift_count));
+          if (value < 0) {
+            __ negl(left);
+          }
+          __ SmiTag(left);
+        } else if (value == SpecializedDivisor()) {
+          ASSERT(left == EAX);
+          ASSERT(locs()->temp(0).reg() == EDX);
+          ASSERT(result == EAX);
+          Register reciprocal = locs()->temp(1).reg();
+          __ SmiUntag(left);
+          __ movl(reciprocal, Immediate((2^32 * 4) / SpecializedDivisor()));
+          __ imull(reciprocal); // result in EDX:EAX
+          __ sarl(EDX, Immediate(2));
+          Label non_negative;
+          __ j(NOT_SIGN, &non_negative, Assembler::kNearJump);
+          __ incl(EDX); // fix off-by-one for negative dividend
+          __ Bind(&non_negative);
+          __ leal(result, Address(EDX, EDX, TIMES_1, 0));
+        } else {
+          UNREACHABLE();
         }
-        __ SmiTag(left);
         break;
       }
 
