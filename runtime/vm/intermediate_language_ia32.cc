@@ -2862,6 +2862,10 @@ static intptr_t SpecializedDivisor() {
   return 10;
 }
 
+static intptr_t SpecializedDivisorReciprocal() {
+  return 0x66666667;
+}
+
 static bool IsSpecializedTruncDivDivisor(Value* right) {
   if (!right->definition()->IsConstant()) return false;
   const Object& constant = right->definition()->AsConstant()->value();
@@ -3037,7 +3041,7 @@ void BinarySmiOpInstr::EmitNativeCode(FlowGraphCompiler* compiler) {
           ASSERT(result == EAX);
           Register reciprocal = locs()->temp(1).reg();
           __ SmiUntag(left);
-          __ movl(reciprocal, Immediate((2^32 * 4) / SpecializedDivisor()));
+          __ movl(reciprocal, Immediate(SpecializedDivisorReciprocal()));
           __ imull(reciprocal); // result in EDX:EAX
           __ sarl(EDX, Immediate(2));
           Label non_negative;

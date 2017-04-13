@@ -6,13 +6,13 @@ import "package:expect/expect.dart";
 
 // Checks that specialized truncated division works as expected.
 
-f(x) => x ~/ 11;
-f_(x) => (x / 11).truncate();
+f(x) => x ~/ 10;
+f_(x) => (x / 10).truncate();
 
 main() {
 	var sum = 0;
-	// Range long enough for VM to optimize f(x) and run for few seconds.
-	for (var i = -10000+1; i < 10000; i++) {
+	// Range long enough for VM to optimize f(x), f_(x).
+	for (var i = -1000000+1; i < 1000000; i++) {
 	    sum += f(i);
 	    Expect.equals(f(i), f_(i));
 	}
