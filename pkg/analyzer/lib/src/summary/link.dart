@@ -1056,7 +1056,9 @@ abstract class CompilationUnitElementForLink
               resolveRef(containingReference).getContainedName(name);
         }
       } else if (linkedReference.dependency == 0) {
-        if (name == 'void') {
+        if (linkedReference.kind == ReferenceKind.unresolved) {
+          _references[index] = UndefinedElementForLink.instance;
+        } else if (name == 'void') {
           _references[index] = enclosingElement._linker.voidElement;
         } else if (name == '*bottom*') {
           _references[index] = enclosingElement._linker.bottomElement;
@@ -1292,8 +1294,11 @@ class CompilationUnitElementInBuildUnit extends CompilationUnitElementForLink {
    */
   void link() {
     if (library._linker.strongMode) {
-      new InstanceMemberInferrer(enclosingElement._linker.typeProvider,
-              enclosingElement.inheritanceManager, new Set<FieldElement>())
+      new InstanceMemberInferrer(
+              enclosingElement._linker.typeProvider,
+              (clazz) => (clazz.library as LibraryElementInBuildUnit)
+                  .inheritanceManager,
+              new Set<FieldElement>())
           .inferCompilationUnit(this);
       for (TopLevelVariableElementForLink variable in topLevelVariables) {
         variable.link(this);
@@ -4793,8 +4798,8 @@ class TopLevelVariableElementForLink extends VariableElementForLink
 }
 
 /**
- * Specialization of [DependencyWalker] for performing type inferrence
- * on static and top level variables.
+ * Specialization of [DependencyWalker] for performing type inference on static
+ * and top level variables.
  */
 class TypeInferenceDependencyWalker
     extends DependencyWalker<TypeInferenceNode> {

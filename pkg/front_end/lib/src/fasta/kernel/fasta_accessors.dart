@@ -8,6 +8,11 @@ export 'frontend_accessors.dart' show wrapInvalid;
 
 import 'frontend_accessors.dart' show Accessor, buildIsNull, makeLet;
 
+import 'package:front_end/src/fasta/builder/ast_factory.dart' show AstFactory;
+
+import 'package:front_end/src/fasta/type_inference/type_promotion.dart'
+    show TypePromoter;
+
 import 'package:kernel/ast.dart';
 
 import '../errors.dart' show internalError;
@@ -35,6 +40,12 @@ import '../names.dart' show callName;
 abstract class BuilderHelper {
   Uri get uri;
 
+  TypePromoter get typePromoter;
+
+  int get functionNestingLevel;
+
+  AstFactory get astFactory;
+
   Constructor lookupConstructor(Name name, {bool isSuper});
 
   Expression toSuperMethodInvocation(MethodInvocation node);
@@ -50,7 +61,15 @@ abstract class BuilderHelper {
 
   Expression buildCompileTimeError(error, [int offset]);
 
-  Initializer buildCompileTimeErrorIntializer(error, [int offset]);
+  Initializer buildInvalidIntializer(Expression expression, [int offset]);
+
+  Initializer buildSuperInitializer(
+      Constructor constructor, Arguments arguments,
+      [int offset]);
+
+  Initializer buildRedirectingInitializer(
+      Constructor constructor, Arguments arguments,
+      [int charOffset = -1]);
 
   Expression buildStaticInvocation(Procedure target, Arguments arguments);
 
@@ -59,6 +78,11 @@ abstract class BuilderHelper {
   Expression throwNoSuchMethodError(
       String name, Arguments arguments, int offset,
       {bool isSuper: false, isGetter: false, isSetter: false});
+
+  bool checkArguments(FunctionNode function, Arguments arguments,
+      List<TypeParameter> typeParameters);
+
+  StaticGet makeStaticGet(Member readTarget, int offset);
 }
 
 abstract class FastaAccessor implements Accessor {
@@ -70,13 +94,18 @@ abstract class FastaAccessor implements Accessor {
 
   String get plainNameForWrite => plainNameForRead;
 
+  bool get isInitializer => false;
+
   Expression buildForEffect() => buildSimpleRead();
 
   Initializer buildFieldInitializer(
       Map<String, FieldInitializer> initializers) {
-    // TODO(ahe): This error message is really bad.
-    return helper.buildCompileTimeErrorIntializer(
-        "Can't use $plainNameForRead here.", offset);
+    return helper.buildInvalidIntializer(
+        helper.buildCompileTimeError(
+            // TODO(ahe): This error message is really bad.
+            "Can't use $plainNameForRead here.",
+            offset),
+        offset);
   }
 
   Expression makeInvalidRead() {
@@ -151,8 +180,8 @@ abstract class ErrorAccessor implements FastaAccessor {
   @override
   Initializer buildFieldInitializer(
       Map<String, FieldInitializer> initializers) {
-    return new LocalInitializer(new VariableDeclaration.forValue(
-        buildError(new Arguments.empty(), isSetter: true)));
+    return helper.buildInvalidIntializer(
+        buildError(new Arguments.empty(), isSetter: true));
   }
 
   @override
@@ -266,8 +295,10 @@ class ThisAccessor extends FastaAccessor {
   Initializer buildFieldInitializer(
       Map<String, FieldInitializer> initializers) {
     String keyword = isSuper ? "super" : "this";
-    return helper.buildCompileTimeErrorIntializer(
-        "Can't use '$keyword' here, did you mean '$keyword()'?", offset);
+    return helper.buildInvalidIntializer(
+        helper.buildCompileTimeError(
+            "Can't use '$keyword' here, did you mean '$keyword()'?", offset),
+        offset);
   }
 
   buildPropertyAccess(IncompleteSend send, bool isNullAware) {
@@ -306,17 +337,18 @@ class ThisAccessor extends FastaAccessor {
   Initializer buildConstructorInitializer(
       int offset, Name name, Arguments arguments) {
     Constructor constructor = helper.lookupConstructor(name, isSuper: isSuper);
-    Initializer result;
-    if (constructor == null) {
-      result = new LocalInitializer(new VariableDeclaration.forValue(
+    if (constructor == null ||
+        !helper.checkArguments(
+            constructor.function, arguments, <TypeParameter>[])) {
+      return helper.buildInvalidIntializer(
           buildThrowNoSuchMethodError(arguments,
-              isSuper: isSuper, name: name.name, offset: offset)));
+              isSuper: isSuper, name: name.name, offset: offset),
+          offset);
     } else if (isSuper) {
-      result = new SuperInitializer(constructor, arguments);
+      return helper.buildSuperInitializer(constructor, arguments, offset);
     } else {
-      result = new RedirectingInitializer(constructor, arguments);
+      return helper.buildRedirectingInitializer(constructor, arguments, offset);
     }
-    return result..fileOffset = offset;
   }
 
   Expression buildAssignment(Expression value, {bool voidContext: false}) {
@@ -642,10 +674,9 @@ class PropertyAccessor extends kernel.PropertyAccessor with FastaAccessor {
 }
 
 class StaticAccessor extends kernel.StaticAccessor with FastaAccessor {
-  final BuilderHelper helper;
-
-  StaticAccessor(this.helper, int offset, Member readTarget, Member writeTarget)
-      : super(readTarget, writeTarget, offset) {
+  StaticAccessor(
+      BuilderHelper helper, int offset, Member readTarget, Member writeTarget)
+      : super(helper, readTarget, writeTarget, offset) {
     assert(readTarget != null || writeTarget != null);
   }
 
@@ -789,6 +820,7 @@ class NullAwarePropertyAccessor extends kernel.NullAwarePropertyAccessor
 }
 
 class VariableAccessor extends kernel.VariableAccessor with FastaAccessor {
+  @override
   final BuilderHelper helper;
 
   VariableAccessor(this.helper, int offset, VariableDeclaration variable,

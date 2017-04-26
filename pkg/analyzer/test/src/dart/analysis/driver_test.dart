@@ -27,6 +27,7 @@ import 'package:analyzer/src/generated/resolver.dart' show ResolverErrorCode;
 import 'package:analyzer/src/generated/sdk.dart';
 import 'package:analyzer/src/generated/source.dart';
 import 'package:analyzer/src/summary/idl.dart';
+import 'package:analyzer/src/summary/package_bundle_reader.dart';
 import 'package:convert/convert.dart';
 import 'package:crypto/crypto.dart';
 import 'package:test/test.dart';
@@ -39,8 +40,9 @@ import 'base.dart';
 
 main() {
   defineReflectiveSuite(() {
-    defineReflectiveTests(AnalysisDriverTest);
     defineReflectiveTests(AnalysisDriverSchedulerTest);
+    defineReflectiveTests(AnalysisDriverTest);
+    defineReflectiveTests(CacheAllAnalysisDriverTest);
   });
 }
 
@@ -987,6 +989,43 @@ part 'foo.dart';
     expect(errors[0].errorCode, CompileTimeErrorCode.URI_DOES_NOT_EXIST);
   }
 
+  test_externalSummaries() async {
+    var a = _p('/a.dart');
+    var b = _p('/b.dart');
+    provider.newFile(
+        a,
+        r'''
+class A {}
+''');
+    provider.newFile(
+        b,
+        r'''
+import 'a.dart';
+var a = new A();
+''');
+
+    // Prepare the store with a.dart and everything it needs.
+    SummaryDataStore summaryStore =
+        createAnalysisDriver().test.getSummaryStore(a);
+
+    // There are at least a.dart and dart:core libraries.
+    String aUri = provider.pathContext.toUri(a).toString();
+    expect(summaryStore.unlinkedMap.keys, contains(aUri));
+    expect(summaryStore.linkedMap.keys, contains(aUri));
+    expect(summaryStore.unlinkedMap.keys, contains('dart:core'));
+    expect(summaryStore.linkedMap.keys, contains('dart:core'));
+
+    // Remove a.dart from the file system.
+    provider.deleteFile(a);
+
+    // We don't need a.dart file when we analyze with the summary store.
+    // Still no analysis errors.
+    AnalysisDriver driver =
+        createAnalysisDriver(externalSummaries: summaryStore);
+    AnalysisResult result = await driver.getResult(b);
+    expect(result.errors, isEmpty);
+  }
+
   test_generatedFile() async {
     Uri uri = Uri.parse('package:aaa/foo.dart');
     String templatePath = _p('/aaa/lib/foo.dart');
@@ -1130,6 +1169,63 @@ main() {
     int fooId = index.strings.indexOf('foo');
     expect(unitId, isNonNegative);
     expect(fooId, isNonNegative);
+  }
+
+  test_getLibraryByUri_external_resynthesize() async {
+    provider.newFile(
+        testFile,
+        r'''
+class Test {}
+''');
+
+    // Prepare the store with package:test/test.dart URI.
+    SummaryDataStore summaryStore =
+        createAnalysisDriver().test.getSummaryStore(testFile);
+
+    // package:test/test.dart is in the store.
+    String uri = 'package:test/test.dart';
+    expect(summaryStore.unlinkedMap.keys, contains(uri));
+    expect(summaryStore.linkedMap.keys, contains(uri));
+
+    // Remove the file from the file system.
+    provider.deleteFile(testFile);
+
+    // We can resynthesize the library from the store without reading the file.
+    AnalysisDriver driver =
+        createAnalysisDriver(externalSummaries: summaryStore);
+    expect(driver.test.numOfCreatedLibraryContexts, 0);
+    LibraryElement library = await driver.getLibraryByUri(uri);
+    expect(library.getType('Test'), isNotNull);
+  }
+
+  test_getLibraryByUri_sdk_analyze() async {
+    LibraryElement coreLibrary = await driver.getLibraryByUri('dart:core');
+    expect(coreLibrary, isNotNull);
+    expect(coreLibrary.getType('Object'), isNotNull);
+    expect(coreLibrary.getType('int'), isNotNull);
+  }
+
+  test_getLibraryByUri_sdk_resynthesize() async {
+    SummaryDataStore sdkStore;
+    {
+      String corePath = sdk.mapDartUri('dart:core').fullName;
+      sdkStore = createAnalysisDriver().test.getSummaryStore(corePath);
+    }
+
+    // There are dart:core and dart:async in the store.
+    expect(sdkStore.unlinkedMap.keys, contains('dart:core'));
+    expect(sdkStore.unlinkedMap.keys, contains('dart:async'));
+    expect(sdkStore.linkedMap.keys, contains('dart:core'));
+    expect(sdkStore.linkedMap.keys, contains('dart:async'));
+
+    // We don't create new library context (so, don't parse, summarize and
+    // link) for dart:core. The library is resynthesized from the provided
+    // external store.
+    AnalysisDriver driver = createAnalysisDriver(externalSummaries: sdkStore);
+    LibraryElement coreLibrary = await driver.getLibraryByUri('dart:core');
+    expect(driver.test.numOfCreatedLibraryContexts, 0);
+    expect(coreLibrary, isNotNull);
+    expect(coreLibrary.getType('Object'), isNotNull);
   }
 
   test_getResult() async {
@@ -1422,6 +1518,20 @@ String z = "string";
 foo([p = V]) {}
 V();
 var V;
+''';
+    addTestFile(content);
+    await driver.getResult(testFile);
+  }
+
+  test_getResult_nameConflict_local_typeInference() async {
+    String content = r'''
+typedef F();
+var F;
+F _ff() => null;
+var f = _ff(); // the inference must fail
+main() {
+  f();
+}
 ''';
     addTestFile(content);
     await driver.getResult(testFile);
@@ -2601,6 +2711,99 @@ class F extends X {}
   static String _md5(String content) {
     return hex.encode(md5.convert(UTF8.encode(content)).bytes);
   }
+}
+
+@reflectiveTest
+class CacheAllAnalysisDriverTest extends BaseAnalysisDriverTest {
+  bool get disableChangesAndCacheAllResults => true;
+
+  test_addFile() async {
+    var a = _p('/test/lib/a.dart');
+    var b = _p('/test/lib/b.dart');
+    driver.addFile(a);
+    driver.addFile(b);
+  }
+
+  test_changeFile() async {
+    var path = _p('/test.dart');
+    expect(() {
+      driver.changeFile(path);
+    }, throwsStateError);
+  }
+
+  test_getResult_libraryUnits() async {
+    var lib = _p('/lib.dart');
+    var part1 = _p('/part1.dart');
+    var part2 = _p('/part2.dart');
+
+    provider.newFile(
+        lib,
+        r'''
+library test;
+part 'part1.dart';
+part 'part2.dart';
+''');
+    provider.newFile(part1, 'part of test; class A {}');
+    provider.newFile(part2, 'part of test; class B {}');
+
+    driver.addFile(lib);
+    driver.addFile(part1);
+    driver.addFile(part2);
+
+    // No analyzed libraries initially.
+    expect(driver.test.numOfAnalyzedLibraries, 0);
+
+    AnalysisResult libResult = await driver.getResult(lib);
+    AnalysisResult partResult1 = await driver.getResult(part1);
+    AnalysisResult partResult2 = await driver.getResult(part2);
+
+    // Just one library was analyzed, results for parts are cached.
+    expect(driver.test.numOfAnalyzedLibraries, 1);
+
+    expect(libResult.path, lib);
+    expect(partResult1.path, part1);
+    expect(partResult2.path, part2);
+
+    expect(libResult.unit, isNotNull);
+    expect(partResult1.unit, isNotNull);
+    expect(partResult2.unit, isNotNull);
+
+    // The parts uses the same resynthesized library element.
+    var libLibrary = libResult.unit.element.library;
+    var partLibrary1 = partResult1.unit.element.library;
+    var partLibrary2 = partResult2.unit.element.library;
+    expect(partLibrary1, same(libLibrary));
+    expect(partLibrary2, same(libLibrary));
+  }
+
+  test_getResult_singleFile() async {
+    var path = _p('/test.dart');
+    provider.newFile(path, 'main() {}');
+    driver.addFile(path);
+
+    AnalysisResult result1 = await driver.getResult(path);
+    expect(driver.test.numOfAnalyzedLibraries, 1);
+    var unit1 = result1.unit;
+    var unitElement1 = unit1.element;
+    expect(result1.path, path);
+    expect(unit1, isNotNull);
+    expect(unitElement1, isNotNull);
+
+    AnalysisResult result2 = await driver.getResult(path);
+    expect(driver.test.numOfAnalyzedLibraries, 1);
+    expect(result2.path, path);
+    expect(result2.unit, same(unit1));
+    expect(result2.unit.element, same(unitElement1));
+  }
+
+  test_removeFile() async {
+    var path = _p('/test.dart');
+    expect(() {
+      driver.removeFile(path);
+    }, throwsStateError);
+  }
+
+  String _p(String path) => provider.convertPath(path);
 }
 
 class _SourceMock extends TypedMock implements Source {}

@@ -1070,7 +1070,7 @@ class ElementGraphBuilder extends ast.Visitor<TypeInformation>
     }
 
     inferrer.closedWorldRefiner
-        .registerSideEffects(analyzedElement, sideEffects);
+        .registerSideEffects(analyzedElement.declaration, sideEffects);
     assert(breaksFor.isEmpty);
     assert(continuesFor.isEmpty);
     return returnType;
@@ -2287,6 +2287,11 @@ class ElementGraphBuilder extends ast.Visitor<TypeInformation>
   TypeInformation visitAwait(ast.Await node) {
     TypeInformation futureType = node.expression.accept(this);
     return inferrer.registerAwait(node, futureType);
+  }
+
+  TypeInformation visitYield(ast.Yield node) {
+    TypeInformation operandType = node.expression.accept(this);
+    return inferrer.registerYield(node, operandType);
   }
 
   TypeInformation handleTypeLiteralInvoke(ast.NodeList arguments) {

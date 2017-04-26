@@ -10,14 +10,11 @@
 #include "vm/block_scheduler.h"
 #include "vm/branch_optimizer.h"
 #include "vm/cha.h"
-#include "vm/code_generator.h"
 #include "vm/code_patcher.h"
 #include "vm/constant_propagator.h"
 #include "vm/dart_entry.h"
 #include "vm/debugger.h"
 #include "vm/deopt_instructions.h"
-#include "vm/kernel.h"
-#include "vm/kernel_to_il.h"
 #include "vm/disassembler.h"
 #include "vm/exceptions.h"
 #include "vm/flags.h"
@@ -30,6 +27,8 @@
 #include "vm/flow_graph_type_propagator.h"
 #include "vm/il_printer.h"
 #include "vm/jit_optimizer.h"
+#include "vm/kernel.h"
+#include "vm/kernel_to_il.h"
 #include "vm/longjump.h"
 #include "vm/object.h"
 #include "vm/object_store.h"
@@ -37,8 +36,9 @@
 #include "vm/parser.h"
 #include "vm/precompiler.h"
 #include "vm/redundancy_elimination.h"
-#include "vm/regexp_parser.h"
 #include "vm/regexp_assembler.h"
+#include "vm/regexp_parser.h"
+#include "vm/runtime_entry.h"
 #include "vm/symbols.h"
 #include "vm/tags.h"
 #include "vm/thread_registry.h"
@@ -2199,32 +2199,32 @@ bool Compiler::CanOptimizeFunction(Thread* thread, const Function& function) {
 
 
 RawError* Compiler::Compile(const Library& library, const Script& script) {
-  UNREACHABLE();
+  FATAL1("Attempt to compile script %s", script.ToCString());
   return Error::null();
 }
 
 
 RawError* Compiler::CompileClass(const Class& cls) {
-  UNREACHABLE();
+  FATAL1("Attempt to compile class %s", cls.ToCString());
   return Error::null();
 }
 
 
 RawObject* Compiler::CompileFunction(Thread* thread, const Function& function) {
-  UNREACHABLE();
+  FATAL1("Attempt to compile function %s", function.ToCString());
   return Error::null();
 }
 
 
 RawError* Compiler::ParseFunction(Thread* thread, const Function& function) {
-  UNREACHABLE();
+  FATAL1("Attempt to parse function %s", function.ToCString());
   return Error::null();
 }
 
 
 RawError* Compiler::EnsureUnoptimizedCode(Thread* thread,
                                           const Function& function) {
-  UNREACHABLE();
+  FATAL1("Attempt to compile function %s", function.ToCString());
   return Error::null();
 }
 
@@ -2232,13 +2232,14 @@ RawError* Compiler::EnsureUnoptimizedCode(Thread* thread,
 RawObject* Compiler::CompileOptimizedFunction(Thread* thread,
                                               const Function& function,
                                               intptr_t osr_id) {
-  UNREACHABLE();
+  FATAL1("Attempt to compile function %s", function.ToCString());
   return Error::null();
 }
 
 
 RawError* Compiler::CompileParsedFunction(ParsedFunction* parsed_function) {
-  UNREACHABLE();
+  FATAL1("Attempt to compile function %s",
+         parsed_function->function().ToCString());
   return Error::null();
 }
 
@@ -2249,13 +2250,13 @@ void Compiler::ComputeLocalVarDescriptors(const Code& code) {
 
 
 RawError* Compiler::CompileAllFunctions(const Class& cls) {
-  UNREACHABLE();
+  FATAL1("Attempt to compile class %s", cls.ToCString());
   return Error::null();
 }
 
 
 RawError* Compiler::ParseAllFunctions(const Class& cls) {
-  UNREACHABLE();
+  FATAL1("Attempt to parse class %s", cls.ToCString());
   return Error::null();
 }
 

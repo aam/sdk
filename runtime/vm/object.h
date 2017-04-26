@@ -364,6 +364,10 @@ class Object {
     ASSERT(null_type_arguments_ != NULL);
     return *null_type_arguments_;
   }
+  static const TypeArguments& empty_type_arguments() {
+    ASSERT(empty_type_arguments_ != NULL);
+    return *empty_type_arguments_;
+  }
 
   static const Array& empty_array() {
     ASSERT(empty_array_ != NULL);
@@ -788,6 +792,7 @@ class Object {
   static String* null_string_;
   static Instance* null_instance_;
   static TypeArguments* null_type_arguments_;
+  static TypeArguments* empty_type_arguments_;
   static Array* empty_array_;
   static Array* zero_array_;
   static Context* empty_context_;
@@ -1559,8 +1564,6 @@ enum Genericity {
   kAny,              // Consider type params of current class and functions.
   kCurrentClass,     // Consider type params of current class only.
   kFunctions,        // Consider type params of current and parent functions.
-  kCurrentFunction,  // Consider type params of current function only.
-  kParentFunctions   // Consider type params of parent functions only.
 };
 
 
@@ -1676,7 +1679,7 @@ class TypeArguments : public Object {
   // Canonicalize only if instantiated, otherwise returns 'this'.
   RawTypeArguments* Canonicalize(TrailPtr trail = NULL) const;
 
-  // Returns a formatted list of occuring type arguments with their URI.
+  // Returns a formatted list of occurring type arguments with their URI.
   RawString* EnumerateURIs() const;
 
   // Return 'this' if this type argument vector is instantiated, i.e. if it does
@@ -1772,6 +1775,7 @@ class TypeArguments : public Object {
   friend class AbstractType;
   friend class Class;
   friend class ClearTypeHashVisitor;
+  friend class Object;
 };
 
 
@@ -1902,13 +1906,13 @@ class ICData : public Object {
   V(BinaryMintOp)                                                              \
   V(DoubleToSmi)                                                               \
   V(CheckSmi)                                                                  \
+  V(CheckClass)                                                                \
   V(Unknown)                                                                   \
   V(PolymorphicInstanceCallTestFail)                                           \
   V(UnaryMintOp)                                                               \
   V(BinaryDoubleOp)                                                            \
   V(UnaryOp)                                                                   \
   V(UnboxInteger)                                                              \
-  V(CheckClass)                                                                \
   V(CheckArrayBound)                                                           \
   V(AtCall)                                                                    \
   V(GuardField)                                                                \
@@ -2070,7 +2074,6 @@ class ICData : public Object {
   bool AllTargetsHaveSameOwner(intptr_t owner_cid) const;
   bool AllReceiversAreNumbers() const;
   bool HasOneTarget() const;
-  bool HasOnlyDispatcherOrImplicitAccessorTargets() const;
   bool HasReceiverClassId(intptr_t class_id) const;
 
   static RawICData* New(const Function& owner,
@@ -2201,6 +2204,7 @@ class Function : public Object {
   // function type with uninstantiated type arguments 'T' and 'R' as elements of
   // its type argument vector.
   RawType* SignatureType() const;
+  RawType* ExistingSignatureType() const;
 
   // Update the signature type (with a canonical version).
   void SetSignatureType(const Type& value) const;
@@ -2277,6 +2281,13 @@ class Function : public Object {
   intptr_t NumTypeParameters() const {
     return NumTypeParameters(Thread::Current());
   }
+
+  // Returns true if this function has the same number of type parameters with
+  // equal bounds as the other function. Type parameter names are ignored.
+  bool HasSameTypeParametersAndBounds(const Function& other) const;
+
+  // Return the number of type parameters declared in parent generic functions.
+  intptr_t NumParentTypeParameters() const;
 
   // Return a TypeParameter if the type_name is a type parameter of this
   // function or of one of its parent functions.
@@ -2426,6 +2437,7 @@ class Function : public Object {
       case RawFunction::kInvokeFieldDispatcher:
         return true;
       case RawFunction::kClosureFunction:
+      case RawFunction::kSignatureFunction:
       case RawFunction::kConstructor:
       case RawFunction::kImplicitStaticFinalGetter:
       case RawFunction::kIrregexpFunction:
@@ -2449,7 +2461,11 @@ class Function : public Object {
       case RawFunction::kIrregexpFunction:
         return true;
       case RawFunction::kClosureFunction:
+      case RawFunction::kSignatureFunction:
       case RawFunction::kConstructor:
+      case RawFunction::kMethodExtractor:
+      case RawFunction::kNoSuchMethodDispatcher:
+      case RawFunction::kInvokeFieldDispatcher:
         return false;
       default:
         UNREACHABLE();
@@ -2662,22 +2678,26 @@ class Function : public Object {
   // the other function.
   bool IsSubtypeOf(const Function& other,
                    Error* bound_error,
+                   TrailPtr bound_trail,
                    Heap::Space space) const {
-    return TypeTest(kIsSubtypeOf, other, bound_error, space);
+    return TypeTest(kIsSubtypeOf, other, bound_error, bound_trail, space);
   }
 
   // Returns true if the type of this function is more specific than the type of
   // the other function.
   bool IsMoreSpecificThan(const Function& other,
                           Error* bound_error,
+                          TrailPtr bound_trail,
                           Heap::Space space) const {
-    return TypeTest(kIsMoreSpecificThan, other, bound_error, space);
+    return TypeTest(kIsMoreSpecificThan, other, bound_error, bound_trail,
+                    space);
   }
 
   // Check the subtype or 'more specific' relationship.
   bool TypeTest(TypeTestKind test_kind,
                 const Function& other,
                 Error* bound_error,
+                TrailPtr bound_trail,
                 Heap::Space space) const;
 
   bool IsDispatcherOrImplicitAccessor() const {
@@ -2810,7 +2830,8 @@ class Function : public Object {
                           bool is_external,
                           bool is_native,
                           const Object& owner,
-                          TokenPosition token_pos);
+                          TokenPosition token_pos,
+                          Heap::Space space = Heap::kOld);
 
   // Allocates a new Function object representing a closure function.
   static RawFunction* NewClosureFunction(const String& name,
@@ -2820,7 +2841,8 @@ class Function : public Object {
   // Allocates a new Function object representing a signature function.
   // The owner is the scope class of the function type.
   static RawFunction* NewSignatureFunction(const Object& owner,
-                                           TokenPosition token_pos);
+                                           TokenPosition token_pos,
+                                           Heap::Space space = Heap::kOld);
 
   static RawFunction* NewEvalFunction(const Class& owner,
                                       const Script& script,
@@ -2985,7 +3007,7 @@ class Function : public Object {
   void set_kind_tag(uint32_t value) const;
   void set_data(const Object& value) const;
 
-  static RawFunction* New();
+  static RawFunction* New(Heap::Space space = Heap::kOld);
 
   RawString* QualifiedName(NameVisibility name_visibility) const;
 
@@ -3004,6 +3026,7 @@ class Function : public Object {
                          intptr_t other_parameter_position,
                          const Function& other,
                          Error* bound_error,
+                         TrailPtr bound_trail,
                          Heap::Space space) const;
 
   FINAL_HEAP_OBJECT_IMPLEMENTATION(Function, Object);
@@ -3065,7 +3088,7 @@ class SignatureData : public Object {
   RawType* signature_type() const { return raw_ptr()->signature_type_; }
   void set_signature_type(const Type& value) const;
 
-  static RawSignatureData* New();
+  static RawSignatureData* New(Heap::Space space = Heap::kOld);
 
   FINAL_HEAP_OBJECT_IMPLEMENTATION(SignatureData, Object);
   friend class Class;
@@ -3568,6 +3591,9 @@ class Script : public Object {
   }
   void set_compile_time_constants(const Array& value) const;
 
+  RawTypedData* kernel_strings() const { return raw_ptr()->kernel_strings_; }
+  void set_kernel_strings(const TypedData& strings) const;
+
   RawTokenStream* tokens() const {
     ASSERT(kind() != RawScript::kKernelTag);
     return raw_ptr()->tokens_;
@@ -3757,7 +3783,6 @@ class Library : public Object {
   void AddClass(const Class& cls) const;
   void AddObject(const Object& obj, const String& name) const;
   void ReplaceObject(const Object& obj, const String& name) const;
-  bool RemoveObject(const Object& obj, const String& name) const;
   RawObject* LookupReExport(const String& name,
                             ZoneGrowableArray<intptr_t>* visited = NULL) const;
   RawObject* LookupObjectAllowPrivate(const String& name) const;
@@ -3820,7 +3845,7 @@ class Library : public Object {
   RawLibrary* ImportLibraryAt(intptr_t index) const;
   bool ImportsCorelib() const;
 
-  void DropDependencies() const;
+  void DropDependenciesAndCaches() const;
 
   // Resolving native methods for script loaded in the library.
   Dart_NativeEntryResolver native_entry_resolver() const {
@@ -3939,22 +3964,23 @@ class Library : public Object {
   void InitClassDictionary() const;
 
   RawArray* resolved_names() const { return raw_ptr()->resolved_names_; }
-  void InitResolvedNamesCache(intptr_t size) const;
-  void AllocateExportedNamesCache() const;
-  void InitExportedNamesCache() const;
-  static void InvalidateExportedNamesCaches();
   bool LookupResolvedNamesCache(const String& name, Object* obj) const;
   void AddToResolvedNamesCache(const String& name, const Object& obj) const;
+  void InitResolvedNamesCache() const;
+  void ClearResolvedNamesCache() const;
   void InvalidateResolvedName(const String& name) const;
   void InvalidateResolvedNamesCache() const;
 
   RawArray* exported_names() const { return raw_ptr()->exported_names_; }
   bool LookupExportedNamesCache(const String& name, Object* obj) const;
   void AddToExportedNamesCache(const String& name, const Object& obj) const;
+  void InitExportedNamesCache() const;
+  void ClearExportedNamesCache() const;
+  static void InvalidateExportedNamesCaches();
 
 
   void InitImportList() const;
-  void GrowDictionary(const Array& dict, intptr_t dict_size) const;
+  void RehashDictionary(const Array& old_dict, intptr_t new_dict_size) const;
   static RawLibrary* NewLibraryHelper(const String& url, bool import_core_lib);
   RawObject* LookupEntry(const String& name, intptr_t* index) const;
 
@@ -3972,11 +3998,12 @@ class Library : public Object {
   friend class Bootstrap;
   friend class Class;
   friend class Debugger;
-  friend class Isolate;
   friend class DictionaryIterator;
+  friend class Isolate;
+  friend class LibraryDeserializationCluster;
   friend class Namespace;
   friend class Object;
-  friend class LibraryDeserializationCluster;
+  friend class Precompiler;
 };
 
 
@@ -5781,7 +5808,7 @@ class AbstractType : public Instance {
     return BuildName(kUserVisibleName);
   }
 
-  // Returns a formatted list of occuring types with their URI.
+  // Returns a formatted list of occurring types with their URI.
   virtual RawString* EnumerateURIs() const;
 
   virtual intptr_t Hash() const;
@@ -6031,15 +6058,18 @@ class Type : public AbstractType {
 
 
 // A TypeRef is used to break cycles in the representation of recursive types.
-// Its only field is the recursive AbstractType it refers to.
+// Its only field is the recursive AbstractType it refers to, which can
+// temporarily be null during finalization.
 // Note that the cycle always involves type arguments.
 class TypeRef : public AbstractType {
  public:
   virtual bool IsFinalized() const {
-    return AbstractType::Handle(type()).IsFinalized();
+    const AbstractType& ref_type = AbstractType::Handle(type());
+    return !ref_type.IsNull() && ref_type.IsFinalized();
   }
   virtual bool IsBeingFinalized() const {
-    return AbstractType::Handle(type()).IsBeingFinalized();
+    const AbstractType& ref_type = AbstractType::Handle(type());
+    return ref_type.IsNull() || ref_type.IsBeingFinalized();
   }
   virtual bool IsMalformed() const {
     return AbstractType::Handle(type()).IsMalformed();
@@ -6138,7 +6168,6 @@ class TypeParameter : public AbstractType {
   RawString* name() const { return raw_ptr()->name_; }
   intptr_t index() const { return raw_ptr()->index_; }
   void set_index(intptr_t value) const;
-  intptr_t parent_level() const { return raw_ptr()->parent_level_; }
   RawAbstractType* bound() const { return raw_ptr()->bound_; }
   void set_bound(const AbstractType& value) const;
   // Returns true if bounded_type is below upper_bound, otherwise return false
@@ -6184,7 +6213,6 @@ class TypeParameter : public AbstractType {
   static RawTypeParameter* New(const Class& parameterized_class,
                                const Function& parameterized_function,
                                intptr_t index,
-                               intptr_t parent_level,
                                const String& name,
                                const AbstractType& bound,
                                TokenPosition token_pos);
@@ -6197,7 +6225,6 @@ class TypeParameter : public AbstractType {
   void set_parameterized_function(const Function& value) const;
   void set_name(const String& value) const;
   void set_token_pos(TokenPosition token_pos) const;
-  void set_parent_level(intptr_t value) const;
   void set_type_state(int8_t state) const;
 
   static RawTypeParameter* New();
@@ -8355,9 +8382,18 @@ class LinkedHashMap : public Instance {
 
 class Closure : public Instance {
  public:
-  RawTypeArguments* instantiator() const { return raw_ptr()->instantiator_; }
-  static intptr_t instantiator_offset() {
-    return OFFSET_OF(RawClosure, instantiator_);
+  RawTypeArguments* instantiator_type_arguments() const {
+    return raw_ptr()->instantiator_type_arguments_;
+  }
+  static intptr_t instantiator_type_arguments_offset() {
+    return OFFSET_OF(RawClosure, instantiator_type_arguments_);
+  }
+
+  RawTypeArguments* function_type_arguments() const {
+    return raw_ptr()->function_type_arguments_;
+  }
+  static intptr_t function_type_arguments_offset() {
+    return OFFSET_OF(RawClosure, function_type_arguments_);
   }
 
   RawFunction* function() const { return raw_ptr()->function_; }
@@ -8377,7 +8413,8 @@ class Closure : public Instance {
     return true;
   }
 
-  static RawClosure* New(const TypeArguments& instantiator,
+  static RawClosure* New(const TypeArguments& instantiator_type_arguments,
+                         const TypeArguments& function_type_arguments,
                          const Function& function,
                          const Context& context,
                          Heap::Space space = Heap::kNew);

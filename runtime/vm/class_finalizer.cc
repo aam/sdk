@@ -4,15 +4,15 @@
 
 #include "vm/class_finalizer.h"
 
-#include "vm/code_generator.h"
 #include "vm/flags.h"
 #include "vm/hash_table.h"
 #include "vm/heap.h"
 #include "vm/isolate.h"
-#include "vm/longjump.h"
 #include "vm/log.h"
+#include "vm/longjump.h"
 #include "vm/object_store.h"
 #include "vm/program_visitor.h"
+#include "vm/runtime_entry.h"
 #include "vm/symbols.h"
 #include "vm/timeline.h"
 #include "vm/type_table.h"
@@ -674,9 +674,11 @@ void ClassFinalizer::CheckRecursiveType(const Class& cls,
       arguments.IsSubvectorInstantiated(first_type_param, num_type_params)) {
     return;
   }
-  // The type parameters are not instantiated. Verify that there is no other
-  // type pending finalization with the same type class, but different
-  // uninstantiated type parameters.
+  // Consider mutually recursive and uninstantiated types pending finalization
+  // with the same type class and report an error if they are not equal in their
+  // raw form, i.e. where each type parameter is substituted with dynamic.
+  // This test eliminates divergent types without restricting recursive types
+  // typically found in the wild.
   TypeArguments& pending_arguments = TypeArguments::Handle(zone);
   const intptr_t num_pending_types = pending_types->length();
   for (intptr_t i = num_pending_types - 1; i >= 0; i--) {
@@ -693,10 +695,21 @@ void ClassFinalizer::CheckRecursiveType(const Class& cls,
                                                    num_type_params) &&
           !pending_arguments.IsSubvectorInstantiated(first_type_param,
                                                      num_type_params)) {
-        // Reject the non-contractive recursive type.
-        const String& type_name = String::Handle(zone, type.Name());
-        ReportError(cls, type.token_pos(), "illegal recursive type '%s'",
-                    type_name.ToCString());
+        const TypeArguments& instantiated_arguments = TypeArguments::Handle(
+            zone, arguments.InstantiateFrom(Object::null_type_arguments(),
+                                            Object::null_type_arguments(), NULL,
+                                            NULL, NULL, Heap::kNew));
+        const TypeArguments& instantiated_pending_arguments =
+            TypeArguments::Handle(zone, pending_arguments.InstantiateFrom(
+                                            Object::null_type_arguments(),
+                                            Object::null_type_arguments(), NULL,
+                                            NULL, NULL, Heap::kNew));
+        if (!instantiated_pending_arguments.IsSubvectorEquivalent(
+                instantiated_arguments, first_type_param, num_type_params)) {
+          const String& type_name = String::Handle(zone, type.Name());
+          ReportError(cls, type.token_pos(), "illegal recursive type '%s'",
+                      type_name.ToCString());
+        }
       }
     }
   }
@@ -754,9 +767,8 @@ intptr_t ClassFinalizer::ExpandAndFinalizeTypeArguments(
   // postpone bound checking (if required) until after all types in the graph of
   // mutually recursive types are finalized.
   type.SetIsBeingFinalized();
-  if (pending_types != NULL) {
-    pending_types->Add(type);
-  }
+  ASSERT(pending_types != NULL);
+  pending_types->Add(type);
 
   // The full type argument vector consists of the type arguments of the
   // super types of type_class, which are initialized from the parsed
@@ -925,9 +937,9 @@ void ClassFinalizer::FinalizeTypeArguments(const Class& cls,
           // Example: class B<T>; class D<T> extends B<D<T>>;
           // While finalizing D<T>, the super type arg D<T> (a typeref) gets
           // instantiated from vector [T], yielding itself.
-          //
-          if (super_type_arg.IsTypeRef() && super_type_arg.IsBeingFinalized() &&
+          if (super_type_arg.IsTypeRef() &&
               (super_type_arg.arguments() == arguments.raw())) {
+            ASSERT(super_type_arg.IsBeingFinalized());
             arguments.SetTypeAt(i, super_type_arg);
             continue;
           }
@@ -951,12 +963,30 @@ void ClassFinalizer::FinalizeTypeArguments(const Class& cls,
             ASSERT(super_type_arg.IsTypeRef());
             AbstractType& ref_super_type_arg =
                 AbstractType::Handle(TypeRef::Cast(super_type_arg).type());
+            if (FLAG_trace_type_finalization) {
+              THR_Print("Instantiated TypeRef '%s': '%s'\n",
+                        String::Handle(super_type_arg.Name()).ToCString(),
+                        ref_super_type_arg.ToCString());
+            }
+            CheckRecursiveType(cls, ref_super_type_arg, pending_types);
+            pending_types->Add(ref_super_type_arg);
+            const Class& super_cls =
+                Class::Handle(ref_super_type_arg.type_class());
+            const TypeArguments& super_args =
+                TypeArguments::Handle(ref_super_type_arg.arguments());
+            // Mark as finalized before finalizing to avoid cycles.
             ref_super_type_arg.SetIsFinalized();
-            const Class& cls = Class::Handle(ref_super_type_arg.type_class());
+            // Since the instantiator is different, do not pass the current
+            // instantiation trail, but create a new one by passing NULL.
             FinalizeTypeArguments(
-                cls, TypeArguments::Handle(ref_super_type_arg.arguments()),
-                cls.NumTypeArguments() - cls.NumTypeParameters(), bound_error,
-                pending_types, instantiation_trail);
+                super_cls, super_args,
+                super_cls.NumTypeArguments() - super_cls.NumTypeParameters(),
+                bound_error, pending_types, NULL);
+            if (FLAG_trace_type_finalization) {
+              THR_Print("Finalized instantiated TypeRef '%s': '%s'\n",
+                        String::Handle(super_type_arg.Name()).ToCString(),
+                        ref_super_type_arg.ToCString());
+            }
           }
         }
       }
@@ -1174,25 +1204,28 @@ RawAbstractType* ClassFinalizer::FinalizeType(const Class& cls,
     const TypeParameter& type_parameter = TypeParameter::Cast(type);
     const Class& parameterized_class =
         Class::Handle(zone, type_parameter.parameterized_class());
+    intptr_t offset;
     if (!parameterized_class.IsNull()) {
       // The index must reflect the position of this type parameter in the type
       // arguments vector of its parameterized class. The offset to add is the
       // number of type arguments in the super type, which is equal to the
       // difference in number of type arguments and type parameters of the
       // parameterized class.
-      const intptr_t offset = parameterized_class.NumTypeArguments() -
-                              parameterized_class.NumTypeParameters();
-      // Calling NumTypeParameters() may finalize this type parameter if it
-      // belongs to a mixin application class.
-      if (!type_parameter.IsFinalized()) {
-        type_parameter.set_index(type_parameter.index() + offset);
-        type_parameter.SetIsFinalized();
-      } else {
-        ASSERT(cls.IsMixinApplication());
-      }
+      offset = parameterized_class.NumTypeArguments() -
+               parameterized_class.NumTypeParameters();
     } else {
-      // A function type parameter is always finalized.
-      ASSERT(type_parameter.IsFinalized());
+      const Function& function =
+          Function::Handle(zone, type_parameter.parameterized_function());
+      ASSERT(!function.IsNull());
+      offset = function.NumParentTypeParameters();
+    }
+    // Calling NumTypeParameters() may finalize this type parameter if it
+    // belongs to a mixin application class.
+    if (!type_parameter.IsFinalized()) {
+      type_parameter.set_index(type_parameter.index() + offset);
+      type_parameter.SetIsFinalized();
+    } else {
+      ASSERT(cls.IsMixinApplication());
     }
 
     if (FLAG_trace_type_finalization) {
@@ -1209,9 +1242,8 @@ RawAbstractType* ClassFinalizer::FinalizeType(const Class& cls,
   ASSERT(type.IsType());
 
   // This type is the root type of the type graph if no pending types queue is
-  // allocated yet, and if canonicalization is required.
-  const bool is_root_type =
-      (pending_types == NULL) && (finalization >= kCanonicalize);
+  // allocated yet.
+  const bool is_root_type = pending_types == NULL;
   if (is_root_type) {
     pending_types = new PendingTypes(zone, 4);
   }
@@ -1345,7 +1377,8 @@ void ClassFinalizer::FinalizeSignature(const Class& cls,
                                        FinalizationKind finalization) {
   AbstractType& type = AbstractType::Handle();
   AbstractType& finalized_type = AbstractType::Handle();
-  // Finalize upper bounds of function type parameters.
+  // Finalize function type parameters and their upper bounds.
+  const intptr_t num_parent_type_params = function.NumParentTypeParameters();
   const intptr_t num_type_params = function.NumTypeParameters();
   if (num_type_params > 0) {
     TypeParameter& type_param = TypeParameter::Handle();
@@ -1353,6 +1386,10 @@ void ClassFinalizer::FinalizeSignature(const Class& cls,
         TypeArguments::Handle(function.type_parameters());
     for (intptr_t i = 0; i < num_type_params; i++) {
       type_param ^= type_params.TypeAt(i);
+      if (!type_param.IsFinalized()) {
+        type_param.set_index(num_parent_type_params + i);
+        type_param.SetIsFinalized();
+      }
       type = type_param.bound();
       finalized_type = FinalizeType(cls, type, finalization);
       if (finalized_type.raw() != type.raw()) {
@@ -1822,7 +1859,7 @@ void ClassFinalizer::CloneMixinAppTypeParameters(const Class& mixin_app_class) {
         param_name =
             Symbols::FromConcat(thread, param_name, Symbols::Backtick());
         cloned_param =
-            TypeParameter::New(mixin_app_class, null_function, cloned_index, 0,
+            TypeParameter::New(mixin_app_class, null_function, cloned_index,
                                param_name, param_bound, param.token_pos());
         cloned_type_params.SetTypeAt(cloned_index, cloned_param);
         // Change the type arguments of the super type to refer to the
@@ -1860,7 +1897,7 @@ void ClassFinalizer::CloneMixinAppTypeParameters(const Class& mixin_app_class) {
         cloned_param =
             TypeParameter::New(mixin_app_class, null_function,
                                cloned_index,  // Unfinalized index.
-                               0, param_name, param_bound, param.token_pos());
+                               param_name, param_bound, param.token_pos());
         cloned_type_params.SetTypeAt(cloned_index, cloned_param);
         mixin_type_args.SetTypeAt(i, cloned_param);  // Unfinalized length.
         instantiator.SetTypeAt(offset + i, cloned_param);  // Finalized length.
@@ -2434,8 +2471,8 @@ void ClassFinalizer::FinalizeTypesInClass(const Class& cls) {
     FinalizeTypesInClass(super_class);
   }
   // Finalize type parameters before finalizing the super type.
-  FinalizeTypeParameters(cls);  // May change super type.
-  super_class = cls.SuperClass();
+  FinalizeTypeParameters(cls);  // May change super type while applying mixin.
+  super_class = cls.SuperClass();  // Get again possibly changed super class.
   ASSERT(super_class.IsNull() || super_class.is_type_finalized());
   // Only resolving rather than finalizing the upper bounds here would result in
   // instantiated type parameters of the super type to temporarily have

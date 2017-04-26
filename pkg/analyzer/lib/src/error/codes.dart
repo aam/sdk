@@ -51,6 +51,14 @@ class CheckedModeCompileTimeErrorCode extends ErrorCode {
           "'{1}'.");
 
   /**
+   * 16.12.2 Const: It is a compile-time error if evaluation of a constant
+   * object results in an uncaught exception being thrown.
+   */
+  static const CheckedModeCompileTimeErrorCode CONST_EVAL_THROWS_EXCEPTION =
+      const CheckedModeCompileTimeErrorCode('CONST_EVAL_THROWS_EXCEPTION',
+          "Evaluation of this constant expression throws an exception.");
+
+  /**
    * 7.6.1 Generative Constructors: In checked mode, it is a dynamic type error
    * if o is not <b>null</b> and the interface of the class of <i>o</i> is not a
    * subtype of the static type of the field <i>v</i>.
@@ -1127,7 +1135,7 @@ class CompileTimeErrorCode extends ErrorCode {
           "This class can't implement the deferred class '{0}'.",
           "Try specifying a different interface, "
           "removing the class from the list, or "
-          "changing the import to not be deferred..");
+          "changing the import to not be deferred.");
 
   /**
    * 12.2 Null: It is a compile-time error for a class to attempt to extend or

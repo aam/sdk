@@ -53,7 +53,7 @@ part 'namer_names.dart';
  * uniqueness within some namespace (e.g. as fields on the same JS object).
  * In [MinifyNamer], disambiguated names are also minified.
  *
- * Annotated names are names generated from a disambiguated name. Annnotated
+ * Annotated names are names generated from a disambiguated name. Annotated
  * names must be computable at runtime by prefixing/suffixing constant strings
  * onto the disambiguated name.
  *
@@ -442,20 +442,22 @@ class Namer {
   final String superPrefix = r'super$';
   final String metadataField = '@';
   final String callPrefix = 'call';
-  final String callCatchAllName = r'call*';
+  // Note: We can't shorten 'call*' in the minified namers because the catch-all
+  // formula `name + "*"` is used by mirrors.
+  String get callCatchAllName => r'call*';
   final String callNameField = r'$callName';
   final String stubNameField = r'$stubName';
   final String reflectableField = r'$reflectable';
   final String reflectionInfoField = r'$reflectionInfo';
   final String reflectionNameField = r'$reflectionName';
   final String metadataIndexField = r'$metadataIndex';
-  final String defaultValuesField = r'$defaultValues';
+  String get requiredParameterField => r'$requiredArgCount';
+  String get defaultValuesField => r'$defaultValues';
   final String methodsWithOptionalArgumentsField =
       r'$methodsWithOptionalArguments';
   final String deferredAction = r'$deferredAction';
 
   final String classDescriptorProperty = r'^';
-  final String requiredParameterField = r'$requiredArgCount';
 
   /// The non-minifying namer's [callPrefix] with a dollar after it.
   static const String _callPrefixDollar = r'call$';
@@ -2108,7 +2110,7 @@ class ConstantCanonicalHasher implements ConstantValueVisitor<int, Null> {
   }
 }
 
-class FunctionTypeNamer extends BaseDartTypeVisitor {
+class FunctionTypeNamer extends BaseResolutionDartTypeVisitor {
   final RuntimeTypesEncoder rtiEncoder;
   StringBuffer sb;
 

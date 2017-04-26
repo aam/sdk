@@ -4,6 +4,12 @@
 
 library fasta.diet_listener;
 
+import 'package:front_end/src/fasta/kernel/kernel_ast_factory.dart'
+    show KernelAstFactory;
+
+import 'package:front_end/src/fasta/type_inference/type_inference_engine.dart'
+    show TypeInferenceEngine;
+
 import 'package:kernel/ast.dart' show AsyncMarker;
 
 import 'package:kernel/class_hierarchy.dart' show ClassHierarchy;
@@ -40,6 +46,8 @@ class DietListener extends StackListener {
 
   final bool isDartLibrary;
 
+  final TypeInferenceEngine typeInferenceEngine;
+
   ClassBuilder currentClass;
 
   /// For top-level declarations, this is the library scope. For class members,
@@ -49,7 +57,8 @@ class DietListener extends StackListener {
   @override
   Uri uri;
 
-  DietListener(SourceLibraryBuilder library, this.hierarchy, this.coreTypes)
+  DietListener(SourceLibraryBuilder library, this.hierarchy, this.coreTypes,
+      this.typeInferenceEngine)
       : library = library,
         uri = library.fileUri,
         memberScope = library.scope,
@@ -126,7 +135,7 @@ class DietListener extends StackListener {
   }
 
   @override
-  void endFieldInitializer(Token assignmentOperator) {
+  void endFieldInitializer(Token assignmentOperator, Token token) {
     debugEvent("FieldInitializer");
   }
 
@@ -384,8 +393,20 @@ class DietListener extends StackListener {
   StackListener createListener(
       MemberBuilder builder, Scope memberScope, bool isInstanceMember,
       [Scope formalParameterScope]) {
-    return new BodyBuilder(library, builder, memberScope, formalParameterScope,
-        hierarchy, coreTypes, currentClass, isInstanceMember, uri);
+    var typeInferrer = typeInferenceEngine.createLocalTypeInferrer(uri);
+    return new BodyBuilder(
+        library,
+        builder,
+        memberScope,
+        formalParameterScope,
+        hierarchy,
+        coreTypes,
+        currentClass,
+        isInstanceMember,
+        uri,
+        typeInferrer,
+        new KernelAstFactory())
+      ..constantExpressionRequired = builder.isConstructor && builder.isConst;
   }
 
   void buildFunctionBody(Token token, ProcedureBuilder builder) {
@@ -401,6 +422,8 @@ class DietListener extends StackListener {
   }
 
   void buildFields(Token token, bool isTopLevel, MemberBuilder builder) {
+    // TODO(paulberry): don't re-parse the field if we've already parsed it
+    // for type inference.
     parseFields(createListener(builder, memberScope, builder.isInstanceMember),
         token, isTopLevel);
   }

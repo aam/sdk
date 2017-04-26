@@ -25,7 +25,6 @@ import 'package:path/path.dart' as path;
 /**
  * Information about a single plugin.
  */
-@visibleForTesting
 class PluginInfo {
   /**
    * The path to the root directory of the definition of the plugin on disk (the
@@ -73,6 +72,12 @@ class PluginInfo {
       this.notificationManager, this.instrumentationService);
 
   /**
+   * Return the data known about this plugin.
+   */
+  PluginData get data =>
+      new PluginData(path, currentSession?.name, currentSession?.version);
+
+  /**
    * Add the given [contextRoot] to the set of context roots being analyzed by
    * this plugin.
    */
@@ -90,6 +95,15 @@ class PluginInfo {
     if (contextRoots.remove(contextRoot)) {
       _updatePluginRoots();
     }
+  }
+
+  /**
+   * If the plugin is currently running, send a request based on the given
+   * [params] to the plugin. If the plugin is not running, the request will
+   * silently be dropped.
+   */
+  void sendRequest(RequestParams params) {
+    currentSession?.sendRequest(params);
   }
 
   /**
@@ -163,6 +177,27 @@ class PluginManager {
   Map<String, PluginInfo> _pluginMap = <String, PluginInfo>{};
 
   /**
+   * The parameters for the last 'analysis.setPriorityFiles' request that was
+   * received from the client. Because plugins are lazily discovered, this needs
+   * to be retained so that it can be sent after a plugin has been started.
+   */
+  AnalysisSetPriorityFilesParams _analysisSetPriorityFilesParams;
+
+  /**
+   * The parameters for the last 'analysis.setSubscriptions' request that was
+   * received from the client. Because plugins are lazily discovered, this needs
+   * to be retained so that it can be sent after a plugin has been started.
+   */
+  AnalysisSetSubscriptionsParams _analysisSetSubscriptionsParams;
+
+  /**
+   * The current state of content overlays. Because plugins are lazily
+   * discovered, the state needs to be retained so that it can be sent after a
+   * plugin has been started.
+   */
+  Map<String, dynamic> _overlayState = <String, dynamic>{};
+
+  /**
    * Initialize a newly created plugin manager. The notifications from the
    * running plugins will be handled by the given [notificationManager].
    */
@@ -177,8 +212,12 @@ class PluginManager {
   Future<Null> addPluginToContextRoot(
       analyzer.ContextRoot contextRoot, String path) async {
     PluginInfo plugin = _pluginMap[path];
-    if (plugin == null) {
+    bool isNew = plugin == null;
+    if (isNew) {
       List<String> pluginPaths = _pathsFor(path);
+      if (pluginPaths == null) {
+        return;
+      }
       plugin = new PluginInfo(path, pluginPaths[0], pluginPaths[1],
           notificationManager, instrumentationService);
       _pluginMap[path] = plugin;
@@ -190,6 +229,17 @@ class PluginManager {
       }
     }
     plugin.addContextRoot(contextRoot);
+    if (isNew) {
+      if (_analysisSetSubscriptionsParams != null) {
+        plugin.sendRequest(_analysisSetSubscriptionsParams);
+      }
+      if (_overlayState.isNotEmpty) {
+        plugin.sendRequest(new AnalysisUpdateContentParams(_overlayState));
+      }
+      if (_analysisSetPriorityFilesParams != null) {
+        plugin.sendRequest(_analysisSetPriorityFilesParams);
+      }
+    }
   }
 
   /**
@@ -198,12 +248,15 @@ class PluginManager {
    * containing futures that will complete when each of the plugins have sent a
    * response.
    */
-  List<Future<Response>> broadcast(
+  Map<PluginInfo, Future<Response>> broadcast(
       analyzer.ContextRoot contextRoot, RequestParams params) {
     List<PluginInfo> plugins = pluginsForContextRoot(contextRoot);
-    return plugins
-        .map((PluginInfo plugin) => plugin.currentSession?.sendRequest(params))
-        .toList();
+    Map<PluginInfo, Future<Response>> responseMap =
+        <PluginInfo, Future<Response>>{};
+    for (PluginInfo plugin in plugins) {
+      responseMap[plugin] = plugin.currentSession?.sendRequest(params);
+    }
+    return responseMap;
   }
 
   /**
@@ -231,6 +284,61 @@ class PluginManager {
       if (plugin.contextRoots.isEmpty) {
         _pluginMap.remove(plugin.path);
         plugin.stop();
+      }
+    }
+  }
+
+  /**
+   * Send a request based on the given [params] to existing plugins to set the
+   * priority files to those specified by the [params]. As a side-effect, record
+   * the parameters so that they can be sent to any newly started plugins.
+   */
+  void setAnalysisSetPriorityFilesParams(
+      AnalysisSetPriorityFilesParams params) {
+    for (PluginInfo plugin in _pluginMap.values) {
+      plugin.sendRequest(params);
+    }
+    _analysisSetPriorityFilesParams = params;
+  }
+
+  /**
+   * Send a request based on the given [params] to existing plugins to set the
+   * subscriptions to those specified by the [params]. As a side-effect, record
+   * the parameters so that they can be sent to any newly started plugins.
+   */
+  void setAnalysisSetSubscriptionsParams(
+      AnalysisSetSubscriptionsParams params) {
+    for (PluginInfo plugin in _pluginMap.values) {
+      plugin.sendRequest(params);
+    }
+    _analysisSetSubscriptionsParams = params;
+  }
+
+  /**
+   * Send a request based on the given [params] to existing plugins to set the
+   * content overlays to those specified by the [params]. As a side-effect,
+   * update the overlay state so that it can be sent to any newly started
+   * plugins.
+   */
+  void setAnalysisUpdateContentParams(AnalysisUpdateContentParams params) {
+    for (PluginInfo plugin in _pluginMap.values) {
+      plugin.sendRequest(params);
+    }
+    Map<String, dynamic> files = params.files;
+    for (String file in files.keys) {
+      Object overlay = files[file];
+      if (overlay is RemoveContentOverlay) {
+        _overlayState.remove(file);
+      } else if (overlay is AddContentOverlay) {
+        _overlayState[file] = overlay;
+      } else if (overlay is ChangeContentOverlay) {
+        AddContentOverlay previousOverlay = _overlayState[file];
+        String newContent =
+            SourceEdit.applySequence(previousOverlay.content, overlay.edits);
+        _overlayState[file] = new AddContentOverlay(newContent);
+      } else {
+        throw new ArgumentError(
+            'Invalid class of overlay: ${overlay.runtimeType}');
       }
     }
   }
@@ -281,8 +389,9 @@ class PluginManager {
           if (!packagesFile.exists) {
             packagesFile = null;
           }
+        } else {
+          packagesFile = null;
         }
-        packagesFile = null;
       }
       return <String>[pluginFile.path, packagesFile?.path];
     }

@@ -4,7 +4,6 @@
 
 library js_backend.backend.resolution_listener;
 
-import '../common/backend_api.dart';
 import '../common/names.dart' show Identifiers, Uris;
 import '../common_elements.dart' show CommonElements, ElementEnvironment;
 import '../constants/values.dart';
@@ -41,7 +40,6 @@ class ResolutionEnqueuerListener extends EnqueuerListener {
   final ElementEnvironment _elementEnvironment;
   final CommonElements _commonElements;
   final BackendImpacts _impacts;
-  final BackendClasses _backendClasses;
 
   final NativeBasicData _nativeData;
   final InterceptorDataBuilder _interceptorData;
@@ -65,7 +63,6 @@ class ResolutionEnqueuerListener extends EnqueuerListener {
       this._elementEnvironment,
       this._commonElements,
       this._impacts,
-      this._backendClasses,
       this._nativeData,
       this._interceptorData,
       this._backendUsage,
@@ -184,15 +181,18 @@ class ResolutionEnqueuerListener extends EnqueuerListener {
   void onQueueOpen(Enqueuer enqueuer, FunctionEntity mainMethod,
       Iterable<LibraryEntity> libraries) {
     if (_deferredLoadTask.isProgramSplit) {
-      enqueuer.applyImpact(_computeDeferredLoadingImpact());
+      enqueuer.applyImpact(_computeDeferredLoadingImpact(),
+          impactSource: 'deferred load');
     }
-    enqueuer.applyImpact(_nativeEnqueuer.processNativeClasses(libraries));
+    enqueuer.applyImpact(_nativeEnqueuer.processNativeClasses(libraries),
+        impactSource: 'native classes');
     if (mainMethod != null) {
-      enqueuer.applyImpact(_computeMainImpact(mainMethod));
+      enqueuer.applyImpact(_computeMainImpact(mainMethod),
+          impactSource: 'main impact');
     }
     // Elements required by enqueueHelpers are global dependencies
     // that are not pulled in by a particular element.
-    enqueuer.applyImpact(computeHelpersImpact());
+    enqueuer.applyImpact(computeHelpersImpact(), impactSource: 'helpers');
   }
 
   @override
@@ -202,9 +202,12 @@ class ResolutionEnqueuerListener extends EnqueuerListener {
     //
     // Return early if any elements are added to avoid counting the elements as
     // due to mirrors.
-    enqueuer.applyImpact(_customElementsAnalysis.flush());
-    enqueuer.applyImpact(_lookupMapResolutionAnalysis.flush());
-    enqueuer.applyImpact(_typeVariableResolutionAnalysis.flush());
+    enqueuer.applyImpact(_customElementsAnalysis.flush(),
+        impactSource: _customElementsAnalysis);
+    enqueuer.applyImpact(_lookupMapResolutionAnalysis.flush(),
+        impactSource: _lookupMapResolutionAnalysis);
+    enqueuer.applyImpact(_typeVariableResolutionAnalysis.flush(),
+        impactSource: _typeVariableResolutionAnalysis);
 
     for (ClassEntity cls in recentClasses) {
       MemberEntity element =
@@ -268,7 +271,7 @@ class ResolutionEnqueuerListener extends EnqueuerListener {
           null));
       _backendUsage.registerBackendFunctionUse(helper);
       impactBuilder
-          .registerTypeUse(new TypeUse.instantiation(_backendClasses.typeType));
+          .registerTypeUse(new TypeUse.instantiation(_commonElements.typeType));
     }
   }
 
@@ -276,7 +279,7 @@ class ResolutionEnqueuerListener extends EnqueuerListener {
       DartType type, WorldImpactBuilder impactBuilder) {
     if (type is InterfaceType) {
       impactBuilder.registerTypeUse(new TypeUse.instantiation(type));
-      if (type.element == _backendClasses.typeClass) {
+      if (type.element == _commonElements.typeLiteralClass) {
         // If we use a type literal in a constant, the compile time
         // constant emitter will generate a call to the createRuntimeType
         // helper so we register a use of that.

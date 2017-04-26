@@ -7,7 +7,10 @@
 ### Core library changes
 
 * `dart:io`
-  * Added `Platform.localeName`.
+  * Added `Platform.localeName`, needed for accessing the locale on platforms
+    that don't store it in an environment variable.
+  * Added `ProcessInfo.currentRss` and `ProcessInfo.maxRss` for inspecting
+    the Dart VM process current and peak resident set size.
 
 ### Dart VM
 
@@ -19,14 +22,6 @@
     * Allow publishing packages that depend on the Flutter SDK.
 
 ## 1.23.0
-
-### Language
-* Allow using URI strings in `part of` declarations to refer to the
-  importing library.
-  A library part now can declare its library either as:
-  `part of name.of.library;` or as `part of "uriReferenceOfLibrary.dart";`.
-  This allows libraries with no library declarations (and therefore no name)
-  to have parts, and it allows tools to easily find the library of a part file.
 
 #### Strong Mode
 
@@ -101,12 +96,13 @@ class C extends A with B {}
       int x = 42;
     }
     class D extends C {
-      int x = 123;
-      get y => super.x;
+      get x {
+        print("x got called");
+        return super.x;
+      }
     }
     main() {
       print(new D().x);
-      print(new D().y);
     }
     ```
 

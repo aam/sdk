@@ -765,7 +765,7 @@ class StaticCallSiteTypeInformation extends CallSiteTypeInformation {
 
   bool get isSynthesized {
     // Some calls do not have a corresponding selector, for example
-    // fowarding factory constructors, or synthesized super
+    // forwarding factory constructors, or synthesized super
     // constructor calls. We synthesize these calls but do
     // not create a selector for them.
     return selector == null;
@@ -874,7 +874,7 @@ class DynamicCallSiteTypeInformation extends CallSiteTypeInformation {
   TypeInformation handleIntrisifiedSelector(
       Selector selector, TypeMask mask, InferrerEngine inferrer) {
     ClosedWorld closedWorld = inferrer.closedWorld;
-    ClassElement intClass = closedWorld.backendClasses.intClass;
+    ClassElement intClass = closedWorld.commonElements.jsIntClass;
     if (!intClass.isResolved) return null;
     if (mask == null) return null;
     if (!mask.containsOnlyInt(closedWorld)) {
@@ -884,7 +884,8 @@ class DynamicCallSiteTypeInformation extends CallSiteTypeInformation {
     if (!arguments.named.isEmpty) return null;
     if (arguments.positional.length > 1) return null;
 
-    ClassElement uint31Implementation = closedWorld.backendClasses.uint31Class;
+    ClassElement uint31Implementation =
+        closedWorld.commonElements.jsUInt31Class;
     bool isInt(info) => info.type.containsOnlyInt(closedWorld);
     bool isEmpty(info) => info.type.isEmpty;
     bool isUInt31(info) {
@@ -892,8 +893,8 @@ class DynamicCallSiteTypeInformation extends CallSiteTypeInformation {
     }
 
     bool isPositiveInt(info) {
-      return info.type
-          .satisfies(closedWorld.backendClasses.positiveIntClass, closedWorld);
+      return info.type.satisfies(
+          closedWorld.commonElements.jsPositiveIntClass, closedWorld);
     }
 
     TypeInformation tryLater() => inferrer.types.nonNullEmptyType;
@@ -1710,6 +1711,21 @@ class AwaitTypeInformation extends TypeInformation {
   }
 }
 
+class YieldTypeInformation extends TypeInformation {
+  final ast.Node node;
+
+  YieldTypeInformation(MemberTypeInformation context, this.node)
+      : super(context);
+
+  TypeMask computeType(InferrerEngine inferrer) => safeType(inferrer);
+
+  String toString() => 'Yield';
+
+  accept(TypeInformationVisitor visitor) {
+    return visitor.visitYieldTypeInformation(this);
+  }
+}
+
 abstract class TypeInformationVisitor<T> {
   T visitNarrowTypeInformation(NarrowTypeInformation info);
   T visitPhiElementTypeInformation(PhiElementTypeInformation info);
@@ -1729,6 +1745,7 @@ abstract class TypeInformationVisitor<T> {
   T visitParameterTypeInformation(ParameterTypeInformation info);
   T visitClosureTypeInformation(ClosureTypeInformation info);
   T visitAwaitTypeInformation(AwaitTypeInformation info);
+  T visitYieldTypeInformation(YieldTypeInformation info);
 }
 
 TypeMask _narrowType(

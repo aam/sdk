@@ -17,7 +17,8 @@ import '../elements/modelx.dart'
         SynthesizedConstructorElementX,
         TypeVariableElementX,
         UnnamedMixinApplicationElementX;
-import '../ordered_typeset.dart' show OrderedTypeSet, OrderedTypeSetBuilder;
+import '../ordered_typeset.dart'
+    show OrderedTypeSet, ResolutionOrderedTypeSetBuilder;
 import '../tree/tree.dart';
 import '../universe/call_structure.dart' show CallStructure;
 import '../universe/feature.dart' show Feature;
@@ -538,9 +539,9 @@ class ClassResolverVisitor extends TypeDefinitionVisitor {
    */
   void calculateAllSupertypes(BaseClassElementX cls) {
     if (cls.allSupertypesAndSelf != null) return;
-    final ResolutionDartType supertype = cls.supertype;
+    final ResolutionInterfaceType supertype = cls.supertype;
     if (supertype != null) {
-      cls.allSupertypesAndSelf = new OrderedTypeSetBuilder(cls,
+      cls.allSupertypesAndSelf = new ResolutionOrderedTypeSetBuilder(cls,
               reporter: reporter, objectType: commonElements.objectType)
           .createOrderedTypeSet(supertype, cls.interfaces);
     } else {

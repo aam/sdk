@@ -362,6 +362,18 @@ class AnalysisServer {
   StreamController<String> _onFileChangedController;
 
   /**
+   * This exists as a temporary stopgap for plugins, until the official plugin
+   * API is complete.
+   */
+  Function onResultErrorSupplementor;
+
+  /**
+   * This exists as a temporary stopgap for plugins, until the official plugin
+   * API is complete.
+   */
+  Function onNoAnalysisResult;
+
+  /**
    * The set of the files that are currently priority.
    */
   final Set<String> priorityFiles = new Set<String>();
@@ -410,8 +422,6 @@ class AnalysisServer {
         options.enableIncrementalResolutionApi;
     defaultContextOptions.incrementalValidation =
         options.enableIncrementalResolutionValidation;
-    defaultContextOptions.finerGrainedInvalidation =
-        options.finerGrainedInvalidation;
     defaultContextOptions.generateImplicitErrors = false;
     operationQueue = new ServerOperationQueue();
 
@@ -1882,7 +1892,6 @@ class AnalysisServerOptions {
   bool enableIncrementalResolutionApi = false;
   bool enableIncrementalResolutionValidation = false;
   bool enableNewAnalysisDriver = false;
-  bool finerGrainedInvalidation = false;
   bool noIndex = false;
   bool useAnalysisHighlight2 = false;
   String fileReadMode = 'as-is';

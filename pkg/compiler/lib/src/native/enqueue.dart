@@ -2,7 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-import '../common/backend_api.dart';
 import '../common_elements.dart' show CommonElements, ElementEnvironment;
 import '../elements/elements.dart';
 import '../elements/entities.dart';
@@ -16,7 +15,7 @@ import '../universe/use.dart' show StaticUse, TypeUse;
 import '../universe/world_impact.dart'
     show WorldImpact, WorldImpactBuilder, WorldImpactBuilderImpl;
 import 'behavior.dart';
-import 'resolver.dart' show NativeClassResolver;
+import 'resolver.dart' show NativeClassFinder;
 
 /**
  * This could be an abstract class but we use it as a stub for the dart_backend.
@@ -53,11 +52,10 @@ abstract class NativeEnqueuerBase implements NativeEnqueuer {
   final CompilerOptions _options;
   final ElementEnvironment _elementEnvironment;
   final CommonElements _commonElements;
-  final BackendClasses _backendClasses;
 
   /// Subclasses of [NativeEnqueuerBase] are constructed by the backend.
-  NativeEnqueuerBase(this._options, this._elementEnvironment,
-      this._commonElements, this._backendClasses);
+  NativeEnqueuerBase(
+      this._options, this._elementEnvironment, this._commonElements);
 
   bool get enableLiveTypeAnalysis => _options.enableNativeLiveTypeAnalysis;
 
@@ -112,7 +110,7 @@ abstract class NativeEnqueuerBase implements NativeEnqueuer {
             type == _commonElements.nullType ||
             type == _commonElements.boolType ||
             _elementEnvironment.isSubtype(type,
-                _elementEnvironment.getRawType(_backendClasses.listClass))) {
+                _elementEnvironment.getRawType(_commonElements.jsArrayClass))) {
           registerInstantiation(type);
         }
         // TODO(johnniwinther): Improve spec string precision to handle type
@@ -186,7 +184,7 @@ abstract class NativeEnqueuerBase implements NativeEnqueuer {
 }
 
 class NativeResolutionEnqueuer extends NativeEnqueuerBase {
-  final NativeClassResolver _nativeClassResolver;
+  final NativeClassFinder _nativeClassFinder;
   final BackendUsageBuilder _backendUsageBuilder;
 
   /// The set of all native classes.  Each native class is in [nativeClasses]
@@ -197,10 +195,9 @@ class NativeResolutionEnqueuer extends NativeEnqueuerBase {
       CompilerOptions options,
       ElementEnvironment elementEnvironment,
       CommonElements commonElements,
-      BackendClasses backendClasses,
       this._backendUsageBuilder,
-      this._nativeClassResolver)
-      : super(options, elementEnvironment, commonElements, backendClasses);
+      this._nativeClassFinder)
+      : super(options, elementEnvironment, commonElements);
 
   void _registerBackendUse(FunctionEntity element) {
     _backendUsageBuilder.registerBackendFunctionUse(element);
@@ -210,7 +207,7 @@ class NativeResolutionEnqueuer extends NativeEnqueuerBase {
   WorldImpact processNativeClasses(Iterable<LibraryEntity> libraries) {
     WorldImpactBuilderImpl impactBuilder = new WorldImpactBuilderImpl();
     Iterable<ClassEntity> nativeClasses =
-        _nativeClassResolver.computeNativeClasses(libraries);
+        _nativeClassFinder.computeNativeClasses(libraries);
     _nativeClasses.addAll(nativeClasses);
     _unusedClasses.addAll(nativeClasses);
     if (!enableLiveTypeAnalysis) {
@@ -237,11 +234,10 @@ class NativeCodegenEnqueuer extends NativeEnqueuerBase {
       CompilerOptions options,
       ElementEnvironment elementEnvironment,
       CommonElements commonElements,
-      BackendClasses backendClasses,
       this._emitter,
       this._resolutionEnqueuer,
       this._nativeData)
-      : super(options, elementEnvironment, commonElements, backendClasses);
+      : super(options, elementEnvironment, commonElements);
 
   WorldImpact processNativeClasses(Iterable<LibraryElement> libraries) {
     WorldImpactBuilderImpl impactBuilder = new WorldImpactBuilderImpl();

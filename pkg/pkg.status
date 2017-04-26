@@ -36,6 +36,7 @@ front_end/test/fasta/sdk_test: SkipByDesign
 front_end/test/fasta/bootstrap_test: Pass, Slow
 front_end/test/fasta/compile_test: Pass, Slow
 front_end/test/fasta/kompile_test: Pass, Slow
+front_end/test/fasta/strong_test: Pass, Slow
 
 # These are not tests but input for tests.
 kernel/testcases/*: Skip
@@ -73,8 +74,6 @@ front_end/*: SkipByDesign
 
 [ $runtime == vm && $mode == debug ]
 analysis_server/test/completion_test: Pass, Slow
-kernel/test/baseline_spec_mode_test: Crash # Issue 29300
-kernel/test/baseline_strong_mode_test: Crash # Issue 29300
 
 [ $runtime == vm && $checked ]
 analysis_server/test/completion_test: Pass, Slow
@@ -86,10 +85,7 @@ analyzer/test/src/summary/resynthesize_ast_test: Pass, Slow
 front_end/tool/perf_test: Slow, Pass
 
 [ $runtime == vm && $use_sdk ]
-front_end/test/fasta/compile_test: Skip # Issue 28629
-front_end/test/fasta/kompile_test: Skip # Issue 28629
-front_end/test/fasta/outline_test: Skip # Issue 28629
-front_end/test/fasta/bootstrap_test: Skip # Issue 28629
+front_end/test/fasta/*: Skip # Issue 28629
 
 [ $runtime == vm && $use_sdk == false ]
 front_end/test/incremental_kernel_generator_test: Skip # Issue 28698
@@ -158,7 +154,7 @@ collection/test/unmodifiable_collection_test: SkipSlow # Times out. Issue 22050
 async/test/stream_zip_test: SkipSlow # Times out. Issue 22050
 
 [ $runtime == safarimobilesim ]
-# Unexplained errors only occuring on Safari 6.1 and earlier.
+# Unexplained errors only occurring on Safari 6.1 and earlier.
 typed_data/test/typed_buffers_test: RuntimeError
 
 [ $compiler == dart2js && $csp ]

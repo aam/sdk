@@ -66,7 +66,7 @@ class ObjectPointerVisitor;
   V(ImplicitClosure, "<implicit closure>")                                     \
   V(ClosureParameter, ":closure")                                              \
   V(TypeArgumentsParameter, ":type_arguments")                                 \
-  V(FunctionInstantiatorVar, ":function_instantiator_var")                     \
+  V(FunctionTypeArgumentsVar, ":function_type_arguments_var")                  \
   V(AssertionError, "_AssertionError")                                         \
   V(CastError, "_CastError")                                                   \
   V(TypeError, "_TypeError")                                                   \
@@ -429,6 +429,8 @@ class ObjectPointerVisitor;
   V(_name, "_name")                                                            \
   V(_classRangeCheck, "_classRangeCheck")                                      \
   V(_classRangeCheckNegative, "_classRangeCheckNegative")                      \
+  V(_classRangeAssert, "_classRangeAssert")                                    \
+  V(_classIdEqualsAssert, "_classIdEqualsAssert")                              \
   V(GetRuntimeType, "get:runtimeType")                                         \
   V(HaveSameRuntimeType, "_haveSameRuntimeType")                               \
   V(DartDeveloperCausalAsyncStacks, "dart.developer.causal_async_stacks")      \

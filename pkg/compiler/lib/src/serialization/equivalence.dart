@@ -252,6 +252,7 @@ bool areAccessSemanticsEquivalent(AccessSemantics a, AccessSemantics b) {
               compoundAccess1.getter, compoundAccess2.getter) &&
           areElementsEquivalent(compoundAccess1.setter, compoundAccess2.setter);
     case AccessKind.CONSTANT:
+    default:
       throw new UnsupportedError('Unsupported access kind: ${a.kind}');
   }
 }
@@ -331,6 +332,7 @@ bool areNewStructuresEquivalent(NewStructure a, NewStructure b) {
       return ad.constantInvokeKind == bd.constantInvokeKind &&
           areConstantsEquivalent(ad.constant, bd.constant);
     case NewStructureKind.LATE_CONST:
+    default:
       throw new UnsupportedError('Unsupported NewStructure kind ${a.kind}.');
   }
 }
@@ -632,7 +634,8 @@ class ElementIdentityEquivalence extends BaseElementVisitor<bool, Element> {
 }
 
 /// Visitor that checks for equivalence of [ResolutionDartType]s.
-class TypeEquivalence implements DartTypeVisitor<bool, ResolutionDartType> {
+class TypeEquivalence
+    implements ResolutionDartTypeVisitor<bool, ResolutionDartType> {
   final TestStrategy strategy;
 
   const TypeEquivalence([this.strategy = const TestStrategy()]);

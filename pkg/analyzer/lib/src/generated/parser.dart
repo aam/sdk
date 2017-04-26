@@ -170,6 +170,8 @@ class Parser {
 
   static String _YIELD = Keyword.YIELD.syntax;
 
+  static const int _MAX_TREE_DEPTH = 300;
+
   /**
    * The source being parsed.
    */
@@ -213,6 +215,12 @@ class Parser {
    * The next token to be parsed.
    */
   Token _currentToken;
+
+  /**
+   * The depth of the current AST. When this depth is too high, so we're at the
+   * risk of overflowing the stack, we stop parsing and report an error.
+   */
+  int _treeDepth = 0;
 
   /**
    * A flag indicating whether the parser is currently in a function body marked
@@ -542,7 +550,7 @@ class Parser {
       // There was no type name, so this can't be a declaration.
       return false;
     }
-    if (_atGenericFunctionTypeAfterReturnType(token)) {
+    while (_atGenericFunctionTypeAfterReturnType(token)) {
       token = skipGenericFunctionTypeAfterReturnType(token);
       if (token == null) {
         // There was no type name, so this can't be a declaration.
@@ -1960,8 +1968,16 @@ class Parser {
             [_currentToken.lexeme]);
         _advance();
       } else {
-        CompilationUnitMember member =
-            parseCompilationUnitMember(commentAndMetadata);
+        CompilationUnitMember member;
+        try {
+          member = parseCompilationUnitMember(commentAndMetadata);
+        } on _TooDeepTreeError {
+          _reportErrorForToken(ParserErrorCode.STACK_OVERFLOW, _currentToken);
+          Token eof = new Token(TokenType.EOF, 0);
+          eof.previous = eof;
+          eof.setNext(eof);
+          return astFactory.compilationUnit(eof, null, null, null, eof);
+        }
         if (member != null) {
           declarations.add(member);
         }
@@ -2712,37 +2728,45 @@ class Parser {
    *       | throwExpression
    */
   Expression parseExpression2() {
-    Keyword keyword = _currentToken.keyword;
-    if (keyword == Keyword.THROW) {
-      return parseThrowExpression();
-    } else if (keyword == Keyword.RETHROW) {
-      // TODO(brianwilkerson) Rethrow is a statement again.
-      return parseRethrowExpression();
+    if (_treeDepth > _MAX_TREE_DEPTH) {
+      throw new _TooDeepTreeError();
     }
-    //
-    // assignableExpression is a subset of conditionalExpression, so we can
-    // parse a conditional expression and then determine whether it is followed
-    // by an assignmentOperator, checking for conformance to the restricted
-    // grammar after making that determination.
-    //
-    Expression expression = parseConditionalExpression();
-    TokenType type = _currentToken.type;
-    if (type == TokenType.PERIOD_PERIOD) {
-      List<Expression> cascadeSections = <Expression>[];
-      do {
-        Expression section = parseCascadeSection();
-        if (section != null) {
-          cascadeSections.add(section);
-        }
-      } while (_currentToken.type == TokenType.PERIOD_PERIOD);
-      return astFactory.cascadeExpression(expression, cascadeSections);
-    } else if (type.isAssignmentOperator) {
-      Token operator = getAndAdvance();
-      _ensureAssignable(expression);
-      return astFactory.assignmentExpression(
-          expression, operator, parseExpression2());
+    _treeDepth++;
+    try {
+      Keyword keyword = _currentToken.keyword;
+      if (keyword == Keyword.THROW) {
+        return parseThrowExpression();
+      } else if (keyword == Keyword.RETHROW) {
+        // TODO(brianwilkerson) Rethrow is a statement again.
+        return parseRethrowExpression();
+      }
+      //
+      // assignableExpression is a subset of conditionalExpression, so we can
+      // parse a conditional expression and then determine whether it is followed
+      // by an assignmentOperator, checking for conformance to the restricted
+      // grammar after making that determination.
+      //
+      Expression expression = parseConditionalExpression();
+      TokenType type = _currentToken.type;
+      if (type == TokenType.PERIOD_PERIOD) {
+        List<Expression> cascadeSections = <Expression>[];
+        do {
+          Expression section = parseCascadeSection();
+          if (section != null) {
+            cascadeSections.add(section);
+          }
+        } while (_currentToken.type == TokenType.PERIOD_PERIOD);
+        return astFactory.cascadeExpression(expression, cascadeSections);
+      } else if (type.isAssignmentOperator) {
+        Token operator = getAndAdvance();
+        _ensureAssignable(expression);
+        return astFactory.assignmentExpression(
+            expression, operator, parseExpression2());
+      }
+      return expression;
+    } finally {
+      _treeDepth--;
     }
-    return expression;
   }
 
   /**
@@ -4061,24 +4085,22 @@ class Parser {
             ])) {
           return _parseFunctionDeclarationStatementAfterReturnType(
               commentAndMetadata, returnType);
-        } else {
-          //
-          // We have found an error of some kind. Try to recover.
-          //
-          if (_matchesIdentifier()) {
-            if (next.matchesAny(const <TokenType>[
+        } else if (_matchesIdentifier() &&
+            next.matchesAny(const <TokenType>[
               TokenType.EQ,
               TokenType.COMMA,
               TokenType.SEMICOLON
             ])) {
-              //
-              // We appear to have a variable declaration with a type of "void".
-              //
-              _reportErrorForNode(ParserErrorCode.VOID_VARIABLE, returnType);
-              return parseVariableDeclarationStatementAfterMetadata(
-                  commentAndMetadata);
-            }
-          } else if (_matches(TokenType.CLOSE_CURLY_BRACKET)) {
+          if (returnType is! GenericFunctionType) {
+            _reportErrorForNode(ParserErrorCode.VOID_VARIABLE, returnType);
+          }
+          return _parseVariableDeclarationStatementAfterType(
+              commentAndMetadata, null, returnType);
+        } else {
+          //
+          // We have found an error of some kind. Try to recover.
+          //
+          if (_matches(TokenType.CLOSE_CURLY_BRACKET)) {
             //
             // We appear to have found an incomplete statement at the end of a
             // block. Parse it as a variable declaration.
@@ -4797,20 +4819,29 @@ class Parser {
    *         label* nonLabeledStatement
    */
   Statement parseStatement2() {
-    List<Label> labels = null;
-    while (_matchesIdentifier() && _currentToken.next.type == TokenType.COLON) {
-      Label label = parseLabel(isDeclaration: true);
-      if (labels == null) {
-        labels = <Label>[label];
-      } else {
-        labels.add(label);
+    if (_treeDepth > _MAX_TREE_DEPTH) {
+      throw new _TooDeepTreeError();
+    }
+    _treeDepth++;
+    try {
+      List<Label> labels = null;
+      while (
+          _matchesIdentifier() && _currentToken.next.type == TokenType.COLON) {
+        Label label = parseLabel(isDeclaration: true);
+        if (labels == null) {
+          labels = <Label>[label];
+        } else {
+          labels.add(label);
+        }
       }
+      Statement statement = parseNonLabeledStatement();
+      if (labels == null) {
+        return statement;
+      }
+      return astFactory.labeledStatement(labels, statement);
+    } finally {
+      _treeDepth--;
     }
-    Statement statement = parseNonLabeledStatement();
-    if (labels == null) {
-      return statement;
-    }
-    return astFactory.labeledStatement(labels, statement);
   }
 
   /**
@@ -5504,6 +5535,9 @@ class Parser {
     Token next = startToken.next; // Skip 'Function'
     if (_tokenMatches(next, TokenType.LT)) {
       next = skipTypeParameterList(next);
+      if (next == null) {
+        return null;
+      }
     }
     return skipFormalParameterList(next);
   }
@@ -5622,9 +5656,9 @@ class Parser {
     Token next = null;
     if (_atGenericFunctionTypeAfterReturnType(startToken)) {
       next = skipGenericFunctionTypeAfterReturnType(startToken);
-    } else if (_currentToken.keyword == Keyword.VOID &&
-        _atGenericFunctionTypeAfterReturnType(_currentToken.next)) {
-      next = next.next;
+    } else if (startToken.keyword == Keyword.VOID &&
+        _atGenericFunctionTypeAfterReturnType(startToken.next)) {
+      next = startToken.next;
     } else {
       next = skipTypeName(startToken);
     }
@@ -8569,3 +8603,10 @@ class Parser {
     }
   }
 }
+
+/**
+ * Instances of this class are thrown when the parser detects that AST has
+ * too many nested expressions to be parsed safely and avoid possibility of
+ * [StackOverflowError] in the parser or during later analysis.
+ */
+class _TooDeepTreeError {}

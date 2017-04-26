@@ -15,7 +15,9 @@ import 'package:compiler/compiler_new.dart'
         Diagnostic,
         PackagesDiscoveryProvider;
 import 'package:compiler/src/diagnostics/messages.dart' show Message;
-import 'package:compiler/src/elements/entities.dart' show LibraryEntity;
+import 'package:compiler/src/elements/entities.dart'
+    show LibraryEntity, MemberEntity;
+import 'package:compiler/src/elements/resolution_types.dart' show Types;
 import 'package:compiler/src/enqueue.dart' show ResolutionEnqueuer;
 import 'package:compiler/src/null_compiler_output.dart' show NullCompilerOutput;
 import 'package:compiler/src/library_loader.dart' show LoadedLibraries;
@@ -168,7 +170,8 @@ CompilerImpl compilerFor(
           packagesDiscoveryProvider: packagesDiscoveryProvider));
 
   if (cachedCompiler != null) {
-    compiler.types = cachedCompiler.types.copy(compiler.resolution);
+    Types types = cachedCompiler.types;
+    compiler.types = types.copy(compiler.resolution);
     Map copiedLibraries = {};
     cachedCompiler.libraryLoader.libraries.forEach((library) {
       if (library.isPlatformLibrary) {
@@ -183,10 +186,10 @@ CompilerImpl compilerFor(
     compiler.backend.constantCompilerTask
         .copyConstantValues(cachedCompiler.backend.constantCompilerTask);
 
-    Iterable cachedTreeElements =
+    Iterable<MemberEntity> cachedTreeElements =
         cachedCompiler.enqueuer.resolution.processedEntities;
-    cachedTreeElements.forEach((element) {
-      if (element.library.isPlatformLibrary) {
+    cachedTreeElements.forEach((MemberEntity element) {
+      if (element.library.canonicalUri.scheme == 'dart') {
         resolutionEnqueuer.registerProcessedElementInternal(element);
       }
     });

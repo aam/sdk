@@ -3380,6 +3380,34 @@ main() {
 ''');
   }
 
+  test_importLibraryProject_BAD_notInLib_BUILD() async {
+    testFile = '/aaa/bin/test.dart';
+    provider.newFile('/aaa/BUILD', '');
+    provider.newFile('/bbb/BUILD', '');
+    addSource('/bbb/test/lib.dart', 'class Test {}');
+    await resolveTestUnit('''
+main() {
+  Test t;
+}
+''');
+    performAllAnalysisTasks();
+    await assertNoFix(DartFixKind.IMPORT_LIBRARY_PROJECT1);
+  }
+
+  test_importLibraryProject_BAD_notInLib_pubspec() async {
+    testFile = '/aaa/bin/test.dart';
+    provider.newFile('/aaa/pubspec.yaml', 'name: aaa');
+    provider.newFile('/bbb/pubspec.yaml', 'name: bbb');
+    addSource('/bbb/test/lib.dart', 'class Test {}');
+    await resolveTestUnit('''
+main() {
+  Test t;
+}
+''');
+    performAllAnalysisTasks();
+    await assertNoFix(DartFixKind.IMPORT_LIBRARY_PROJECT1);
+  }
+
   test_importLibraryProject_withClass_annotation() async {
     addSource(
         '/lib.dart',
@@ -5911,6 +5939,349 @@ main() {
 main() {
   var v = 42;
   print('v: $v');
+}
+''');
+  }
+
+  test_removeInitializer_field() async {
+    String src = '''
+class Test {
+  int /*LINT*/x = null;
+}
+''';
+    await findLint(src, LintNames.avoid_init_to_null);
+
+    await applyFix(DartFixKind.REMOVE_INITIALIZER);
+
+    verifyResult('''
+class Test {
+  int x;
+}
+''');
+  }
+
+  test_removeInitializer_listOfVariableDeclarations() async {
+    String src = '''
+String a = 'a', /*LINT*/b = null, c = 'c';
+''';
+    await findLint(src, LintNames.avoid_init_to_null);
+
+    await applyFix(DartFixKind.REMOVE_INITIALIZER);
+
+    verifyResult('''
+String a = 'a', b, c = 'c';
+''');
+  }
+
+  test_removeInitializer_topLevel() async {
+    String src = '''
+var /*LINT*/x = null;
+''';
+    await findLint(src, LintNames.avoid_init_to_null);
+
+    await applyFix(DartFixKind.REMOVE_INITIALIZER);
+
+    verifyResult('''
+var x;
+''');
+  }
+
+  test_removeThisExpression_methodInvocation_oneCharacterOperator() async {
+    String src = '''
+class A {
+  void foo() {
+    /*LINT*/this.foo();
+  }
+}
+''';
+    await findLint(src, LintNames.unnecessary_this);
+
+    await applyFix(DartFixKind.REMOVE_THIS_EXPRESSION);
+
+    verifyResult('''
+class A {
+  void foo() {
+    foo();
+  }
+}
+''');
+  }
+
+  test_removeThisExpression_methodInvocation_twoCharactersOperator() async {
+    String src = '''
+class A {
+  void foo() {
+    /*LINT*/this?.foo();
+  }
+}
+''';
+    await findLint(src, LintNames.unnecessary_this);
+
+    await applyFix(DartFixKind.REMOVE_THIS_EXPRESSION);
+
+    verifyResult('''
+class A {
+  void foo() {
+    foo();
+  }
+}
+''');
+  }
+
+  test_removeThisExpression_propertyAccess_oneCharacterOperator() async {
+    String src = '''
+class A {
+  int x;
+  void foo() {
+    /*LINT*/this.x = 2;
+  }
+}
+''';
+    await findLint(src, LintNames.unnecessary_this);
+
+    await applyFix(DartFixKind.REMOVE_THIS_EXPRESSION);
+
+    verifyResult('''
+class A {
+  int x;
+  void foo() {
+    x = 2;
+  }
+}
+''');
+  }
+
+  test_removeThisExpression_propertyAccess_twoCharactersOperator() async {
+    String src = '''
+class A {
+  int x;
+  void foo() {
+    /*LINT*/this?.x = 2;
+  }
+}
+''';
+    await findLint(src, LintNames.unnecessary_this);
+
+    await applyFix(DartFixKind.REMOVE_THIS_EXPRESSION);
+
+    verifyResult('''
+class A {
+  int x;
+  void foo() {
+    x = 2;
+  }
+}
+''');
+  }
+
+  test_replaceWithLiteral_linkedHashMap_withCommentsInGeneric() async {
+    String src = '''
+import 'dart:collection';
+
+final a = /*LINT*/new LinkedHashMap<int,/*comment*/int>();
+''';
+    await findLint(src, LintNames.prefer_collection_literals);
+
+    await applyFix(DartFixKind.REPLACE_WITH_LITERAL);
+
+    verifyResult('''
+import 'dart:collection';
+
+final a = <int,/*comment*/int>{};
+''');
+  }
+
+  test_replaceWithLiteral_linkedHashMap_withDynamicGenerics() async {
+    String src = '''
+import 'dart:collection';
+
+final a = /*LINT*/new LinkedHashMap<dynamic,dynamic>();
+''';
+    await findLint(src, LintNames.prefer_collection_literals);
+
+    await applyFix(DartFixKind.REPLACE_WITH_LITERAL);
+
+    verifyResult('''
+import 'dart:collection';
+
+final a = <dynamic,dynamic>{};
+''');
+  }
+
+  test_replaceWithLiteral_linkedHashMap_withGeneric() async {
+    String src = '''
+import 'dart:collection';
+
+final a = /*LINT*/new LinkedHashMap<int,int>();
+''';
+    await findLint(src, LintNames.prefer_collection_literals);
+
+    await applyFix(DartFixKind.REPLACE_WITH_LITERAL);
+
+    verifyResult('''
+import 'dart:collection';
+
+final a = <int,int>{};
+''');
+  }
+
+  test_replaceWithLiteral_linkedHashMap_withoutGeneric() async {
+    String src = '''
+import 'dart:collection';
+
+final a = /*LINT*/new LinkedHashMap();
+''';
+    await findLint(src, LintNames.prefer_collection_literals);
+
+    await applyFix(DartFixKind.REPLACE_WITH_LITERAL);
+
+    verifyResult('''
+import 'dart:collection';
+
+final a = {};
+''');
+  }
+
+  test_replaceWithLiteral_list_withGeneric() async {
+    String src = '''
+final a = /*LINT*/new List<int>();
+''';
+    await findLint(src, LintNames.prefer_collection_literals);
+
+    await applyFix(DartFixKind.REPLACE_WITH_LITERAL);
+
+    verifyResult('''
+final a = <int>[];
+''');
+  }
+
+  test_replaceWithLiteral_list_withoutGeneric() async {
+    String src = '''
+final a = /*LINT*/new List();
+''';
+    await findLint(src, LintNames.prefer_collection_literals);
+
+    await applyFix(DartFixKind.REPLACE_WITH_LITERAL);
+
+    verifyResult('''
+final a = [];
+''');
+  }
+
+  test_replaceWithLiteral_map_withGeneric() async {
+    String src = '''
+final a = /*LINT*/new Map<int,int>();
+''';
+    await findLint(src, LintNames.prefer_collection_literals);
+
+    await applyFix(DartFixKind.REPLACE_WITH_LITERAL);
+
+    verifyResult('''
+final a = <int,int>{};
+''');
+  }
+
+  test_replaceWithLiteral_map_withoutGeneric() async {
+    String src = '''
+final a = /*LINT*/new Map();
+''';
+    await findLint(src, LintNames.prefer_collection_literals);
+
+    await applyFix(DartFixKind.REPLACE_WITH_LITERAL);
+
+    verifyResult('''
+final a = {};
+''');
+  }
+
+  test_replaceWithTearOff_function_oneParameter() async {
+    String src = '''
+final x = /*LINT*/(name) {
+  print(name);
+};
+''';
+    await findLint(src, LintNames.unnecessary_lambdas);
+
+    await applyFix(DartFixKind.REPLACE_WITH_TEAR_OFF);
+
+    verifyResult('''
+final x = print;
+''');
+  }
+
+  test_replaceWithTearOff_function_zeroParameters() async {
+    String src = '''
+void foo(){}
+Function finalVar() {
+  return /*LINT*/() {
+    foo();
+  };
+}
+''';
+    await findLint(src, LintNames.unnecessary_lambdas);
+
+    await applyFix(DartFixKind.REPLACE_WITH_TEAR_OFF);
+
+    verifyResult('''
+void foo(){}
+Function finalVar() {
+  return foo;
+}
+''');
+  }
+
+  test_replaceWithTearOff_lambda_asArgument() async {
+    String src = '''
+void foo() {
+  bool isPair(int a) => a % 2 == 0;
+  final finalList = <int>[];
+  finalList.where(/*LINT*/(number) =>
+    isPair(number));
+}
+''';
+    await findLint(src, LintNames.unnecessary_lambdas);
+
+    await applyFix(DartFixKind.REPLACE_WITH_TEAR_OFF);
+
+    verifyResult('''
+void foo() {
+  bool isPair(int a) => a % 2 == 0;
+  final finalList = <int>[];
+  finalList.where(isPair);
+}
+''');
+  }
+
+  test_replaceWithTearOff_method_oneParameter() async {
+    String src = '''
+var a = /*LINT*/(x) => finalList.remove(x);
+''';
+    await findLint(src, LintNames.unnecessary_lambdas);
+
+    await applyFix(DartFixKind.REPLACE_WITH_TEAR_OFF);
+
+    verifyResult('''
+var a = finalList.remove;
+''');
+  }
+
+  test_replaceWithTearOff_method_zeroParameter() async {
+    String src = '''
+final Object a;
+Function finalVar() {
+  return /*LINT*/() {
+    return a.toString();
+  };
+}
+''';
+    await findLint(src, LintNames.unnecessary_lambdas);
+
+    await applyFix(DartFixKind.REPLACE_WITH_TEAR_OFF);
+
+    verifyResult('''
+final Object a;
+Function finalVar() {
+  return a.toString;
 }
 ''');
   }

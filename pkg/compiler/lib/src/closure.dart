@@ -53,9 +53,7 @@ class ClosureTask extends CompilerTask {
   /// Create [ClosureClassMap]s for all live members.
   void createClosureClasses(ClosedWorldRefiner closedWorldRefiner) {
     compiler.enqueuer.resolution.processedEntities
-        .forEach((AstElement element) {
-      // TODO(johnniwinther): Typedefs should never be in processedElements.
-      if (element.isTypedef) return;
+        .forEach((MemberElement element) {
       ResolvedAst resolvedAst = element.resolvedAst;
       if (element.isAbstract) return;
       if (element.isField &&
@@ -198,8 +196,8 @@ class ClosureFieldElement extends ElementX
 // TODO(ahe): These classes continuously cause problems.  We need to find
 // a more general solution.
 class ClosureClassElement extends ClassElementX {
-  ResolutionDartType rawType;
-  ResolutionDartType thisType;
+  ResolutionInterfaceType rawType;
+  ResolutionInterfaceType thisType;
   ResolutionFunctionType callType;
 
   /// Node that corresponds to this closure, used for source position.

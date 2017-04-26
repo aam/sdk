@@ -4,6 +4,12 @@
 
 library fasta.source_class_builder;
 
+import 'package:front_end/src/fasta/builder/class_builder.dart'
+    show ClassBuilder;
+
+import 'package:front_end/src/fasta/type_inference/type_inference_engine.dart'
+    show TypeInferenceEngine;
+
 import 'package:kernel/ast.dart'
     show Class, Constructor, Supertype, TreeNode, setParents;
 
@@ -76,7 +82,7 @@ class SourceClassBuilder extends KernelClassBuilder {
     return count + super.resolveTypes(library);
   }
 
-  Class build(KernelLibraryBuilder library) {
+  Class build(KernelLibraryBuilder library, LibraryBuilder coreLibrary) {
     void buildBuilders(String name, Builder builder) {
       do {
         if (builder is KernelFieldBuilder) {
@@ -146,5 +152,13 @@ class SourceClassBuilder extends KernelClassBuilder {
     DillMemberBuilder memberBuilder = new DillMemberBuilder(constructor, this);
     memberBuilder.next = constructorScopeBuilder[name];
     constructorScopeBuilder.addMember(name, memberBuilder);
+  }
+
+  @override
+  void prepareInitializerInference(TypeInferenceEngine typeInferenceEngine,
+      LibraryBuilder library, ClassBuilder currentClass) {
+    scope.forEach((name, builder) {
+      builder.prepareInitializerInference(typeInferenceEngine, library, this);
+    });
   }
 }

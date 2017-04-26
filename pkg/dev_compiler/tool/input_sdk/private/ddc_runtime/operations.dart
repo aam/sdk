@@ -267,9 +267,12 @@ _checkAndCall(f, ftype, obj, typeArgs, args, name) => JS(
   }
 
   // Apply type arguments
-  let formalCount = $ftype[$_typeFormalCount];
-  if (formalCount != null) {
+  if ($ftype instanceof $GenericFunctionType) {
+    let formalCount = $ftype.formalCount;
+    
     if ($typeArgs == null) {
+      // TODO(jmesserly): this should use instantiate to bounds logic.
+      // See https://github.com/dart-lang/sdk/issues/27256
       $typeArgs = Array(formalCount).fill($dynamic);
     } else if ($typeArgs.length != formalCount) {
       // TODO(jmesserly): is this the right error?
@@ -278,8 +281,8 @@ _checkAndCall(f, ftype, obj, typeArgs, args, name) => JS(
           $typeName($ftype) + ', got <' + $typeArgs + '> expected ' +
           formalCount + '.');
     }
-    // Instantiate the function.
-    $ftype = $ftype.apply(null, $typeArgs);
+    // Instantiate the function type.
+    $ftype = $ftype.instantiate($typeArgs);
   } else if ($typeArgs != null) {
     $throwStrongModeError(
         'got type arguments to non-generic function ' + $typeName($ftype) +
@@ -361,61 +364,6 @@ dsendRepl(obj, method, @rest args) => _callMethodRepl(obj, method, null, args);
 dgsendRepl(obj, typeArgs, method, @rest args) =>
     _callMethodRepl(obj, method, typeArgs, args);
 
-class _MethodStats {
-  final String typeName;
-  final String frame;
-  int count;
-
-  _MethodStats(this.typeName, this.frame) {
-    count = 0;
-  }
-}
-
-Map<String, _MethodStats> _callMethodStats = new Map();
-
-List<List<Object>> getDynamicStats() {
-  List<List<Object>> ret = [];
-
-  var keys = _callMethodStats.keys.toList();
-
-  keys.sort(
-      (a, b) => _callMethodStats[b].count.compareTo(_callMethodStats[a].count));
-  for (var key in keys) {
-    var stats = _callMethodStats[key];
-    ret.add([stats.typeName, stats.frame, stats.count]);
-  }
-
-  return ret;
-}
-
-clearDynamicStats() {
-  _callMethodStats.clear();
-}
-
-bool trackProfile = JS('bool', 'dart.global.trackDdcProfile');
-
-_trackCall(obj) {
-  if (JS('bool', '!#', trackProfile)) return;
-
-  var actual = getReifiedType(obj);
-  String stackStr = JS('String', "new Error().stack");
-  var stack = stackStr.split('\n    at ');
-  var src = '';
-  for (int i = 2; i < stack.length; ++i) {
-    var frame = stack[i];
-    if (!frame.contains('dart_sdk.js')) {
-      src = frame;
-      break;
-    }
-  }
-
-  var actualTypeName = typeName(actual);
-  _callMethodStats
-      .putIfAbsent(
-          "$actualTypeName <$src>", () => new _MethodStats(actualTypeName, src))
-      .count++;
-}
-
 /// Shared code for dsend, dindex, and dsetindex.
 _callMethod(obj, name, typeArgs, args, displayName) {
   var symbol = _canonicalMember(obj, name);
@@ -481,7 +429,7 @@ final _ignoreTypeFailure = JS(
     if (!!$isSubtype(type, $Iterable) && !!$isSubtype(actual, $Iterable) ||
         !!$isSubtype(type, $Future) && !!$isSubtype(actual, $Future) ||
         !!$isSubtype(type, $Map) && !!$isSubtype(actual, $Map) ||
-        $isFunctionType(type) && $isFunctionType(actual) ||
+        $_isFunctionType(type) && $_isFunctionType(actual) ||
         !!$isSubtype(type, $Stream) && !!$isSubtype(actual, $Stream) ||
         !!$isSubtype(type, $StreamSubscription) &&
         !!$isSubtype(actual, $StreamSubscription)) {
@@ -494,6 +442,7 @@ final _ignoreTypeFailure = JS(
 })()''');
 
 /// Returns true if [obj] is an instance of [type]
+/// Returns true if [obj] is a JS function and [type] is a function type
 /// Returns false if [obj] is not an instance of [type] in both spec
 ///  and strong mode
 /// Returns null if [obj] is not an instance of [type] in strong mode
@@ -503,8 +452,11 @@ bool strongInstanceOf(obj, type, ignoreFromWhiteList) => JS(
     '''(() => {
   let actual = $getReifiedType($obj);
   let result = $isSubtype(actual, $type);
-  if (result || actual == $jsobject ||
-      (actual == $int && $isSubtype($double, $type))) return true;
+  if (result || (actual == $int && $isSubtype($double, $type))) return true;
+  if (actual == $jsobject && $_isFunctionType(type) &&
+      typeof(obj) === 'function') {
+    return true;
+  }
   if (result === false) return false;
   if (!$_ignoreWhitelistedErrors || ($ignoreFromWhiteList == void 0)) return result;
   if ($_ignoreTypeFailure(actual, $type)) return true;
@@ -531,6 +483,7 @@ instanceOf(obj, type) => JS(
   }
   let result = $strongInstanceOf($obj, $type);
   if (result !== null) return result;
+  if (!$_failForWeakModeIsChecks) return false;
   let actual = $getReifiedType($obj);
   $throwStrongModeError('Strong mode is-check failure: ' +
     $typeName(actual) + ' does not soundly subtype ' +

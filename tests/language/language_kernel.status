@@ -3,7 +3,6 @@
 # BSD-style license that can be found in the LICENSE file.
 
 [ $compiler == dartk || $compiler == dartkp ]
-body_less_constructor_wrong_arg_negative_test: Crash
 built_in_identifier_test/01: CompileTimeError
 call_nonexistent_static_test/01: CompileTimeError
 call_nonexistent_static_test/04: CompileTimeError
@@ -14,9 +13,6 @@ compile_time_constant_k_test/02: RuntimeError
 compile_time_constant_k_test/03: RuntimeError
 compile_time_constant_o_test/01: RuntimeError
 compile_time_constant_o_test/02: RuntimeError
-compile_time_constant_r_test/01: Crash
-compile_time_constant_r_test/02: Crash
-compile_time_constant_r_test/03: Crash
 compile_time_constant_test/01: MissingCompileTimeError
 conditional_method_invocation_test/11: MissingCompileTimeError
 conditional_property_access_test/09: MissingCompileTimeError
@@ -116,9 +112,8 @@ enum_syntax_test/06: MissingCompileTimeError
 enum_syntax_test/21: MissingCompileTimeError
 enum_syntax_test/30: MissingCompileTimeError
 evaluation_redirecting_constructor_test: RuntimeError
-export_ambiguous_main_negative_test: Crash
-export_double_same_main_test: Crash
-export_main_test: Crash
+export_double_same_main_test: CompileTimeError
+export_main_test: CompileTimeError
 export_private_test/01: MissingCompileTimeError
 external_test/11: MissingCompileTimeError
 external_test/12: MissingCompileTimeError
@@ -173,6 +168,7 @@ function_type_alias7_test/02: MissingCompileTimeError
 function_type_alias9_test/00: MissingCompileTimeError
 function_type_parameter2_negative_test: Crash
 function_type_parameter_negative_test: Crash
+function_type/*: DartkCrash
 generic_closure_test: RuntimeError
 generic_field_mixin2_test: RuntimeError
 generic_field_mixin3_test: RuntimeError
@@ -188,7 +184,6 @@ getter_parameters_test/02: MissingCompileTimeError
 getter_parameters_test/03: MissingCompileTimeError
 getter_parameters_test/04: MissingCompileTimeError
 if_null_assignment_behavior_test/15: RuntimeError
-implicit_scope_test: Crash
 import_private_test/01: MissingCompileTimeError
 initializing_formal_capture_test: RuntimeError
 initializing_formal_final_test: RuntimeError
@@ -209,7 +204,6 @@ library_ambiguous_test/04: MissingRuntimeError
 library_env_test/has_html_support: RuntimeError
 library_env_test/has_no_io_support: RuntimeError
 list_literal4_test: RuntimeError
-main_not_a_function_test/01: Crash
 malformed2_test/00: RuntimeError
 malformed_inheritance_test/09: MissingCompileTimeError
 malformed_inheritance_test/10: MissingCompileTimeError
@@ -266,9 +260,6 @@ named_parameters_aggregated_test/03: MissingCompileTimeError
 named_parameters_aggregated_test/04: MissingCompileTimeError
 named_parameters_default_eq_test/01: MissingCompileTimeError
 named_parameters_default_eq_test/02: MissingCompileTimeError
-no_main_test/01: Crash
-not_enough_positional_arguments_test/02: MissingRuntimeError  # Dartk Issue 28301
-not_enough_positional_arguments_test/05: MissingRuntimeError  # Dartk Issue 28301
 on_catch_malformed_type_test: RuntimeError
 parameter_initializer6_negative_test: Fail
 private_access_test/05: RuntimeError
@@ -348,8 +339,6 @@ try_catch_syntax_test/09: MissingCompileTimeError
 try_catch_syntax_test/10: MissingCompileTimeError
 try_catch_syntax_test/11: MissingCompileTimeError
 try_catch_syntax_test/12: MissingCompileTimeError
-try_catch_syntax_test/16: Crash
-try_catch_syntax_test/17: Crash
 type_variable_conflict_test/01: MissingCompileTimeError
 type_variable_conflict_test/02: MissingCompileTimeError
 type_variable_conflict_test/03: MissingCompileTimeError
@@ -387,7 +376,6 @@ const_locals_test: RuntimeError
 const_string_test: RuntimeError
 const_syntax_test/08: MissingCompileTimeError
 const_syntax_test/09: MissingCompileTimeError
-constructor_named_arguments_test/01: Crash  # Dartk Issue 28301
 ct_const2_test: Pass, Crash # Flaky
 disassemble_test: Pass, Crash  # Multitest via multiple VMOptions! Hits assert "kind() != RawScript::kKernelTag". Issue 28790
 getter_declaration_negative_test: Fail
@@ -408,8 +396,6 @@ vm/optimized_stacktrace_test: Skip # Issue 28788
 constructor_duplicate_initializers_test/03: Crash
 deopt_inlined_function_lazy_test: Skip
 hello_dart_test: Crash  # error: expected: cls.is_type_finalized()
-not_enough_positional_arguments_test/02: Crash  # Dartk Issue 28301
-not_enough_positional_arguments_test/05: Crash  # Dartk Issue 28301
 ref_before_declaration_test/00: Crash
 ref_before_declaration_test/01: Crash
 ref_before_declaration_test/02: Crash
@@ -418,7 +404,6 @@ ref_before_declaration_test/04: Crash
 ref_before_declaration_test/05: Crash
 ref_before_declaration_test/06: Crash
 ref_before_declaration_test/07: Crash
-ref_before_declaration_test/none: Crash
 try_catch_syntax_test/05: Crash
 vm/lazy_deopt_vm_test: Crash
 
@@ -444,10 +429,8 @@ try_catch_syntax_test/05: Crash
 
 # dartk: precompilation failures (debug)
 [ $compiler == dartkp && $mode == debug ]
-constructor_named_arguments_test/01: Crash  # Dartk Issue 28301
 external_test/13: Crash
 final_syntax_test/09: Crash
-not_enough_positional_arguments_test/05: Crash  # Dartk Issue 28301
 regress_22445_test: Crash
 regress_23498_test: Crash
 
@@ -457,7 +440,6 @@ assign_static_type_test/02: MissingCompileTimeError
 async_await_test: RuntimeError
 async_return_types_test/nestedFuture: Fail
 async_return_types_test/wrongTypeParameter: Fail
-body_less_constructor_wrong_arg_negative_test: Pass
 compile_time_constant_checked_test/02: MissingCompileTimeError
 const_conditional_test/08: Pass
 const_constructor2_test/20: MissingCompileTimeError
@@ -572,3 +554,4 @@ issue_1751477_test: CompileTimeError # Deferred loading kernel issue 28335.
 regress_22443_test: CompileTimeError # Deferred loading kernel issue 28335.
 regress_23408_test: CompileTimeError # Deferred loading kernel issue 28335.
 regress_28278_test: CompileTimeError # Deferred loading kernel issue 28335.
+case_expression_with_assignment_test/01: Crash # Issue 29379

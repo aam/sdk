@@ -4,8 +4,6 @@
 
 import 'dart:convert' show UTF8;
 
-import 'package:front_end/src/fasta/scanner/precedence.dart'
-    show BAD_INPUT_INFO, EOF_INFO;
 import 'package:front_end/src/fasta/scanner/recover.dart'
     show defaultRecoveryStrategy;
 import 'package:front_end/src/fasta/scanner.dart' as fasta;
@@ -47,13 +45,12 @@ class ScannerTest_Replacement extends ScannerTest {
     // so we can ignore the `lazyAssignmentOperators` flag.
     // TODO(danrubel): once lazyAssignmentOperators are fully supported by
     // Dart, remove this flag.
-    fasta.ScannerResult result = fasta.scanString(source,
-        includeComments: true,
+    fasta.ScannerResult result = fasta.scanString(source, includeComments: true,
         recover: ((List<int> bytes, fasta.Token tokens, List<int> lineStarts) {
-          // perform recovery as a separate step
-          // so that the token stream can be validated before and after recovery
-          return tokens;
-        }));
+      // perform recovery as a separate step
+      // so that the token stream can be validated before and after recovery
+      return tokens;
+    }));
     fasta.Token tokens = result.tokens;
     assertValidTokenStream(tokens);
     assertValidBeginTokens(tokens);
@@ -336,7 +333,7 @@ class ScannerTest_Replacement extends ScannerTest {
     var token = firstToken;
     // The default recovery strategy used by scanString
     // places all error tokens at the head of the stream.
-    while (token.info == BAD_INPUT_INFO) {
+    while (token.info == analyzer.TokenType.BAD_INPUT) {
       translateErrorToken(token,
           (ScannerErrorCode errorCode, int offset, List<Object> arguments) {
         listener.errors.add(new TestError(offset, errorCode, arguments));
@@ -344,7 +341,7 @@ class ScannerTest_Replacement extends ScannerTest {
       token = token.next;
     }
     if (!token.previousToken.isEof) {
-      var head = new fasta.SymbolToken(EOF_INFO, -1);
+      var head = new fasta.SymbolToken(analyzer.TokenType.EOF, -1);
       token.previous = head;
       head.next = token;
     }

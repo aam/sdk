@@ -1699,6 +1699,8 @@ class ConstantVerifier extends RecursiveAstVisitor<Object> {
           identical(dataErrorCode, CompileTimeErrorCode.CONST_EVAL_TYPE_NUM) ||
           identical(dataErrorCode,
               CompileTimeErrorCode.RECURSIVE_COMPILE_TIME_CONSTANT) ||
+          identical(dataErrorCode,
+              CheckedModeCompileTimeErrorCode.CONST_EVAL_THROWS_EXCEPTION) ||
           identical(
               dataErrorCode,
               CheckedModeCompileTimeErrorCode
@@ -3701,14 +3703,19 @@ class GatherUsedLocalElementsVisitor extends RecursiveAstVisitor {
     }
     // check if useless reading
     AstNode parent = node.parent;
-    if (parent.parent is ExpressionStatement &&
-        (parent is PrefixExpression ||
-            parent is PostfixExpression ||
-            parent is AssignmentExpression && parent.leftHandSide == node)) {
-      // v++;
-      // ++v;
-      // v += 2;
-      return false;
+    if (parent.parent is ExpressionStatement) {
+      if (parent is PrefixExpression || parent is PostfixExpression) {
+        // v++;
+        // ++v;
+        return false;
+      }
+      if (parent is AssignmentExpression && parent.leftHandSide == node) {
+        // v ??= doSomething();
+        //   vs.
+        // v += 2;
+        TokenType operatorType = parent.operator?.type;
+        return operatorType == TokenType.QUESTION_QUESTION_EQ;
+      }
     }
     // OK
     return true;
@@ -4316,7 +4323,7 @@ class InferenceContext {
   }
 
   /**
-   * Clear the type information assocated with [node].
+   * Clear the type information associated with [node].
    */
   static void clearType(AstNode node) {
     node?.setProperty(_typeProperty, null);
@@ -8419,9 +8426,17 @@ class TypeNameResolver {
           typeArguments[i] = dynamicType;
         }
       }
-      type = typeSystem.instantiateType(type, typeArguments);
+      if (element is GenericTypeAliasElementImpl) {
+        type = element.typeAfterSubstitution(typeArguments) ?? dynamicType;
+      } else {
+        type = typeSystem.instantiateType(type, typeArguments);
+      }
     } else {
-      type = typeSystem.instantiateToBounds(type);
+      if (element is GenericTypeAliasElementImpl) {
+        type = element.typeAfterSubstitution(null) ?? dynamicType;
+      } else {
+        type = typeSystem.instantiateToBounds(type);
+      }
     }
     typeName.staticType = type;
     node.type = type;
@@ -8486,7 +8501,7 @@ class TypeNameResolver {
             typeArguments[i] = _getType(arguments[i]);
           }
         }
-        return element.typeAfterSubstitution(typeArguments);
+        return element.typeAfterSubstitution(typeArguments) ?? dynamicType;
       }
     }
     return type;

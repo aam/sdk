@@ -19,7 +19,6 @@ import '../constants/values.dart'
 import '../elements/elements.dart';
 import '../elements/entities.dart';
 import '../elements/resolution_types.dart';
-import '../elements/types.dart';
 import '../io/source_information.dart';
 import '../js/js.dart' as js;
 import '../js_backend/backend.dart' show JavaScriptBackend;
@@ -277,7 +276,7 @@ class KernelSsaBuilder extends ir.Visitor with GraphBuilder {
         constructorArguments,
         new TypeMask.nonNullExact(
             astAdapter.getClass(constructor.enclosingClass), closedWorld),
-        instantiatedTypes: <DartType>[
+        instantiatedTypes: <ResolutionInterfaceType>[
           astAdapter.getClass(constructor.enclosingClass).thisType
         ],
         hasRtiInput: false);
@@ -1166,7 +1165,7 @@ class KernelSsaBuilder extends ir.Visitor with GraphBuilder {
       ir.Node node, ir.Procedure procedure, String message, TypeMask typeMask) {
     HInstruction errorMessage =
         graph.addConstantString(new DartString.literal(message), closedWorld);
-    // TODO(sra): Assocate source info from [node].
+    // TODO(sra): Associate source info from [node].
     _pushStaticInvocation(procedure, [errorMessage], typeMask);
   }
 
@@ -2416,21 +2415,15 @@ class KernelSsaBuilder extends ir.Visitor with GraphBuilder {
       return;
     }
     String name = _foreignConstantStringArgument(invocation, 0, 'JS_GET_FLAG');
-    bool value = false;
-    switch (name) {
-      case 'MUST_RETAIN_METADATA':
-        value = mirrorsData.mustRetainMetadata;
-        break;
-      case 'USE_CONTENT_SECURITY_POLICY':
-        value = options.useContentSecurityPolicy;
-        break;
-      default:
-        reporter.reportErrorMessage(
-            astAdapter.getNode(invocation),
-            MessageKind.GENERIC,
-            {'text': 'Error: Unknown internal flag "$name".'});
+    bool value = getFlagValue(name);
+    if (value == null) {
+      reporter.reportErrorMessage(
+          astAdapter.getNode(invocation),
+          MessageKind.GENERIC,
+          {'text': 'Error: Unknown internal flag "$name".'});
+    } else {
+      stack.add(graph.addConstantBool(value, closedWorld));
     }
-    stack.add(graph.addConstantBool(value, closedWorld));
   }
 
   void handleJsInterceptorConstant(ir.StaticInvocation invocation) {
@@ -2524,7 +2517,7 @@ class KernelSsaBuilder extends ir.Visitor with GraphBuilder {
         targetCanThrow: astAdapter.getCanThrow(target, closedWorld));
     if (currentImplicitInstantiations.isNotEmpty) {
       instruction.instantiatedTypes =
-          new List<ResolutionDartType>.from(currentImplicitInstantiations);
+          new List<ResolutionInterfaceType>.from(currentImplicitInstantiations);
     }
     instruction.sideEffects = astAdapter.getSideEffects(target, closedWorld);
 

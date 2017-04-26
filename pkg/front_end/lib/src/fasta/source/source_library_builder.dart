@@ -4,6 +4,11 @@
 
 library fasta.source_library_builder;
 
+import 'package:front_end/src/fasta/scanner/token.dart' show SymbolToken, Token;
+
+import 'package:front_end/src/fasta/type_inference/type_inference_engine.dart'
+    show TypeInferenceEngine;
+
 import 'package:kernel/ast.dart' show AsyncMarker, ProcedureKind;
 
 import '../combinator.dart' show Combinator;
@@ -171,14 +176,23 @@ abstract class SourceLibraryBuilder<T extends TypeBuilder, R>
       int charOffset);
 
   void addField(List<MetadataBuilder> metadata, int modifiers, T type,
-      String name, int charOffset);
+      String name, int charOffset, Token initializer);
 
   void addFields(List<MetadataBuilder> metadata, int modifiers, T type,
-      List<Object> namesAndOffsets) {
-    for (int i = 0; i < namesAndOffsets.length; i += 2) {
-      String name = namesAndOffsets[i];
-      int charOffset = namesAndOffsets[i + 1];
-      addField(metadata, modifiers, type, name, charOffset);
+      List<Object> namesOffsetsAndInitializers) {
+    for (int i = 0; i < namesOffsetsAndInitializers.length; i += 4) {
+      String name = namesOffsetsAndInitializers[i];
+      int charOffset = namesOffsetsAndInitializers[i + 1];
+      Token initializer;
+      if (type == null) {
+        initializer = namesOffsetsAndInitializers[i + 2];
+        Token afterInitializer = namesOffsetsAndInitializers[i + 3];
+        // TODO(paulberry): figure out a way to do this without using
+        // Token.previous.
+        afterInitializer?.previous
+            ?.setNext(new SymbolToken.eof(afterInitializer.offset));
+      }
+      addField(metadata, modifiers, type, name, charOffset, initializer);
     }
   }
 
@@ -289,14 +303,14 @@ abstract class SourceLibraryBuilder<T extends TypeBuilder, R>
     return true;
   }
 
-  void buildBuilder(Builder builder);
+  void buildBuilder(Builder builder, LibraryBuilder coreLibrary);
 
-  R build() {
+  R build(LibraryBuilder coreLibrary) {
     assert(implementationBuilders.isEmpty);
     canAddImplementationBuilders = true;
     forEach((String name, Builder builder) {
       do {
-        buildBuilder(builder);
+        buildBuilder(builder, coreLibrary);
         builder = builder.next;
       } while (builder != null);
     });
@@ -305,7 +319,7 @@ abstract class SourceLibraryBuilder<T extends TypeBuilder, R>
       Builder builder = list[1];
       int charOffset = list[2];
       addBuilder(name, builder, charOffset);
-      buildBuilder(builder);
+      buildBuilder(builder, coreLibrary);
     }
     canAddImplementationBuilders = false;
 
@@ -469,6 +483,15 @@ abstract class SourceLibraryBuilder<T extends TypeBuilder, R>
 
   @override
   String get fullNameForErrors => name ?? "<library '$relativeFileUri'>";
+
+  @override
+  void prepareInitializerInference(TypeInferenceEngine typeInferenceEngine,
+      LibraryBuilder library, ClassBuilder currentClass) {
+    forEach((String name, Builder member) {
+      member.prepareInitializerInference(
+          typeInferenceEngine, library, currentClass);
+    });
+  }
 }
 
 /// Unlike [Scope], this scope is used during construction of builders to

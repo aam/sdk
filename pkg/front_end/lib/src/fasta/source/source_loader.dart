@@ -8,6 +8,22 @@ import 'dart:async' show Future;
 
 import 'dart:typed_data' show Uint8List;
 
+import 'package:front_end/src/base/instrumentation.dart' show Instrumentation;
+
+import 'package:front_end/src/fasta/builder/ast_factory.dart' show AstFactory;
+
+import 'package:front_end/src/fasta/kernel/kernel_ast_factory.dart'
+    show KernelAstFactory;
+
+import 'package:front_end/src/fasta/kernel/kernel_shadow_ast.dart'
+    show KernelTypeInferenceEngine;
+
+import 'package:front_end/src/fasta/kernel/kernel_target.dart'
+    show KernelTarget;
+
+import 'package:front_end/src/fasta/type_inference/type_inference_engine.dart'
+    show TypeInferenceEngine;
+
 import 'package:kernel/ast.dart' show Program;
 
 import 'package:kernel/class_hierarchy.dart' show ClassHierarchy;
@@ -30,8 +46,6 @@ import '../scanner.dart' show ErrorToken, ScannerResult, Token, scan;
 
 import '../io.dart' show readBytesFromFile;
 
-import '../target_implementation.dart' show TargetImplementation;
-
 import 'diet_listener.dart' show DietListener;
 
 import 'diet_parser.dart' show DietParser;
@@ -50,7 +64,13 @@ class SourceLoader<L> extends Loader<L> {
   ClassHierarchy hierarchy;
   CoreTypes coreTypes;
 
-  SourceLoader(TargetImplementation target) : super(target);
+  final AstFactory astFactory = new KernelAstFactory();
+
+  TypeInferenceEngine typeInferenceEngine;
+
+  Instrumentation instrumentation;
+
+  SourceLoader(KernelTarget target) : super(target);
 
   Future<Token> tokenize(SourceLibraryBuilder library,
       {bool suppressLexicalErrors: false}) async {
@@ -118,8 +138,10 @@ class SourceLoader<L> extends Loader<L> {
     }
   }
 
+  KernelTarget get target => super.target;
+
   DietListener createDietListener(LibraryBuilder library) {
-    return new DietListener(library, hierarchy, coreTypes);
+    return new DietListener(library, hierarchy, coreTypes, typeInferenceEngine);
   }
 
   void resolveParts() {
@@ -335,7 +357,7 @@ class SourceLoader<L> extends Loader<L> {
   void buildProgram() {
     builders.forEach((Uri uri, LibraryBuilder library) {
       if (library is SourceLibraryBuilder) {
-        libraries.add(library.build());
+        libraries.add(library.build(coreLibrary));
       }
     });
     ticker.logMs("Built program");
@@ -354,6 +376,33 @@ class SourceLoader<L> extends Loader<L> {
       builder.checkOverrides(hierarchy);
     }
     ticker.logMs("Checked overrides");
+  }
+
+  void createTypeInferenceEngine() {
+    typeInferenceEngine =
+        new KernelTypeInferenceEngine(instrumentation, target.strongMode);
+  }
+
+  /// Performs the first phase of top level initializer inference, which
+  /// consists of creating kernel objects for all fields and top level variables
+  /// that might be subject to type inference, and records dependencies between
+  /// them.
+  void prepareInitializerInference() {
+    typeInferenceEngine.prepareTopLevel(coreTypes, hierarchy);
+    builders.forEach((Uri uri, LibraryBuilder library) {
+      if (library is SourceLibraryBuilder) {
+        library.prepareInitializerInference(typeInferenceEngine, library, null);
+      }
+    });
+    ticker.logMs("Prepared initializer inference");
+  }
+
+  /// Performs the second phase of top level initializer inference, which is to
+  /// visit fields and top level variables in topologically-sorted order and
+  /// assign their types.
+  void performInitializerInference() {
+    typeInferenceEngine.finishTopLevel();
+    ticker.logMs("Performed initializer inference");
   }
 
   List<Uri> getDependencies() => sourceBytes.keys.toList();

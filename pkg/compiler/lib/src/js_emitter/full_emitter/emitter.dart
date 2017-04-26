@@ -80,9 +80,6 @@ class EmitterFactory implements js_emitter.EmitterFactory {
   EmitterFactory({this.generateSourceMap});
 
   @override
-  String get patchVersion => "full";
-
-  @override
   bool get supportsReflection => true;
 
   @override
@@ -1534,7 +1531,8 @@ class Emitter implements js_emitter.Emitter {
         compiler.outputProvider('', 'js', OutputType.js), codeOutputListeners);
     outputBuffers[mainOutputUnit] = mainOutput;
 
-    mainOutput.addBuffer(jsAst.createCodeBuffer(program, compiler,
+    mainOutput.addBuffer(jsAst.createCodeBuffer(
+        program, compiler.options, backend.sourceInformationStrategy,
         monitor: compiler.dumpInfoTask));
 
     if (compiler.options.deferredMapUri != null) {
@@ -1733,8 +1731,8 @@ class Emitter implements js_emitter.Emitter {
           new List<_DeferredOutputUnitHash>();
       deferredLibraryHashes[loadId] = new List<_DeferredOutputUnitHash>();
       for (OutputUnit outputUnit in outputUnits) {
-        uris.add(
-            js.escapedString(backend.deferredPartFileName(outputUnit.name)));
+        uris.add(js.escapedString(
+            compiler.deferredLoadTask.deferredPartFileName(outputUnit.name)));
         hashes.add(deferredLoadHashes[outputUnit]);
       }
 
@@ -1860,15 +1858,16 @@ class Emitter implements js_emitter.Emitter {
         outputListeners.add(locationCollector);
       }
 
-      String partPrefix =
-          backend.deferredPartFileName(outputUnit.name, addExtension: false);
+      String partPrefix = compiler.deferredLoadTask
+          .deferredPartFileName(outputUnit.name, addExtension: false);
       CodeOutput output = new StreamCodeOutput(
           compiler.outputProvider(partPrefix, 'part.js', OutputType.jsPart),
           outputListeners);
 
       outputBuffers[outputUnit] = output;
 
-      output.addBuffer(jsAst.createCodeBuffer(outputAsts[outputUnit], compiler,
+      output.addBuffer(jsAst.createCodeBuffer(outputAsts[outputUnit],
+          compiler.options, backend.sourceInformationStrategy,
           monitor: compiler.dumpInfoTask));
 
       // Make a unique hash of the code (before the sourcemaps are added)

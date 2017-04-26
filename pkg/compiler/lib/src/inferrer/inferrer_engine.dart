@@ -132,7 +132,8 @@ class InferrerEngine {
       sideEffects.setAllSideEffects();
       sideEffects.setDependsOnSomething();
     } else {
-      sideEffects.add(closedWorldRefiner.getCurrentlyKnownSideEffects(callee));
+      sideEffects.add(
+          closedWorldRefiner.getCurrentlyKnownSideEffects(callee.declaration));
     }
   }
 
@@ -557,7 +558,8 @@ class InferrerEngine {
     types.allocatedCalls.forEach((info) {
       if (!info.inLoop) return;
       if (info is StaticCallSiteTypeInformation) {
-        closedWorldRefiner.addFunctionCalledInLoop(info.calledElement);
+        closedWorldRefiner
+            .addFunctionCalledInLoop(info.calledElement.declaration);
       } else if (info.mask != null && !info.mask.containsAll(closedWorld)) {
         // For instance methods, we only register a selector called in a
         // loop if it is a typed selector, to avoid marking too many
@@ -579,7 +581,7 @@ class InferrerEngine {
       TypeInformation info = workQueue.remove();
       TypeMask oldType = info.type;
       TypeMask newType = info.refine(this);
-      // Check that refinement has not accidentially changed the type.
+      // Check that refinement has not accidentally changed the type.
       assert(oldType == info.type);
       if (info.abandonInferencing) info.doNotEnqueue = true;
       if ((info.type = newType) != oldType) {
@@ -919,6 +921,18 @@ class InferrerEngine {
   }
 
   /**
+   * Registers a call to yield with an expression of type [argumentType] as
+   * argument.
+   */
+  TypeInformation registerYield(ast.Node node, TypeInformation argument) {
+    YieldTypeInformation info =
+        new YieldTypeInformation(types.currentMember, node);
+    info.addAssignment(argument);
+    types.allocatedTypes.add(info);
+    return info;
+  }
+
+  /**
    * Registers that [caller] calls [closure] with [arguments].
    *
    * [sideEffects] will be updated to incorporate the potential
@@ -958,7 +972,7 @@ class InferrerEngine {
     int max = 0;
     Map<int, Setlet<ResolvedAst>> methodSizes = <int, Setlet<ResolvedAst>>{};
     compiler.enqueuer.resolution.processedEntities
-        .forEach((AstElement element) {
+        .forEach((MemberElement element) {
       ResolvedAst resolvedAst = element.resolvedAst;
       element = element.implementation;
       if (element.impliesType) return;

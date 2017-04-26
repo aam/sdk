@@ -6,14 +6,14 @@
 #if defined(TARGET_ARCH_ARM)
 
 #include "vm/assembler.h"
-#include "vm/code_generator.h"
-#include "vm/cpu.h"
 #include "vm/compiler.h"
+#include "vm/cpu.h"
 #include "vm/dart_entry.h"
 #include "vm/flow_graph_compiler.h"
 #include "vm/heap.h"
 #include "vm/instructions.h"
 #include "vm/object_store.h"
+#include "vm/runtime_entry.h"
 #include "vm/stack_frame.h"
 #include "vm/stub_code.h"
 #include "vm/tags.h"
@@ -1789,8 +1789,12 @@ static void GenerateSubtypeNTestCacheStub(Assembler* assembler, int n) {
   // R4: instance type arguments (still null if closure).
   __ SmiTag(R8);
   __ CompareImmediate(R8, Smi::RawValue(kClosureCid));
-  __ ldr(R4, FieldAddress(R0, Closure::instantiator_offset()), EQ);
-  __ ldr(R8, FieldAddress(R0, Closure::function_offset()), EQ);
+  __ b(&loop, NE);
+  __ ldr(R4, FieldAddress(R0, Closure::function_type_arguments_offset()));
+  __ CompareObject(R4, Object::null_object());
+  __ b(&not_found, NE);  // Cache cannot be used for generic closures.
+  __ ldr(R4, FieldAddress(R0, Closure::instantiator_type_arguments_offset()));
+  __ ldr(R8, FieldAddress(R0, Closure::function_offset()));
   // R8: instance class id as Smi or function.
   __ Bind(&loop);
   __ ldr(R9,

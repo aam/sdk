@@ -4,6 +4,8 @@
 
 library fasta.kernel_library_builder;
 
+import 'package:front_end/src/fasta/scanner/token.dart' show Token;
+
 import 'package:kernel/ast.dart';
 
 import 'package:kernel/clone.dart' show CloneVisitor;
@@ -44,6 +46,7 @@ import 'kernel_builder.dart'
         KernelProcedureBuilder,
         KernelTypeBuilder,
         KernelTypeVariableBuilder,
+        LibraryBuilder,
         MemberBuilder,
         MetadataBuilder,
         NamedMixinApplicationBuilder,
@@ -159,11 +162,11 @@ class KernelLibraryBuilder
   }
 
   void addField(List<MetadataBuilder> metadata, int modifiers,
-      KernelTypeBuilder type, String name, int charOffset) {
+      KernelTypeBuilder type, String name, int charOffset, Token initializer) {
     addBuilder(
         name,
-        new KernelFieldBuilder(
-            metadata, type, name, modifiers, this, charOffset),
+        new KernelFieldBuilder(loader.astFactory, loader.typeInferenceEngine,
+            metadata, type, name, modifiers, this, charOffset, initializer),
         charOffset);
   }
 
@@ -294,8 +297,8 @@ class KernelLibraryBuilder
       List<Object> constantNamesAndOffsets, int charOffset, int charEndOffset) {
     addBuilder(
         name,
-        new KernelEnumBuilder(metadata, name, constantNamesAndOffsets, this,
-            charOffset, charEndOffset),
+        new KernelEnumBuilder(loader.astFactory, metadata, name,
+            constantNamesAndOffsets, this, charOffset, charEndOffset),
         charOffset);
   }
 
@@ -340,9 +343,10 @@ class KernelLibraryBuilder
     return builder;
   }
 
-  void buildBuilder(Builder builder) {
+  @override
+  void buildBuilder(Builder builder, LibraryBuilder coreLibrary) {
     if (builder is SourceClassBuilder) {
-      Class cls = builder.build(this);
+      Class cls = builder.build(this, coreLibrary);
       library.addClass(cls);
     } else if (builder is KernelFieldBuilder) {
       library.addMember(builder.build(this)..isStatic = true);
@@ -352,7 +356,7 @@ class KernelLibraryBuilder
       // Kernel discard typedefs and use their corresponding function types
       // directly.
     } else if (builder is KernelEnumBuilder) {
-      library.addClass(builder.build(this));
+      library.addClass(builder.build(this, coreLibrary));
     } else if (builder is PrefixBuilder) {
       // Ignored. Kernel doesn't represent prefixes.
     } else if (builder is BuiltinTypeBuilder) {
@@ -362,8 +366,9 @@ class KernelLibraryBuilder
     }
   }
 
-  Library build() {
-    super.build();
+  @override
+  Library build(LibraryBuilder coreLibrary) {
+    super.build(coreLibrary);
     library.name = name;
     library.procedures.sort(compareProcedures);
     return library;

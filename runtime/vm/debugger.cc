@@ -8,23 +8,23 @@
 
 #include "platform/address_sanitizer.h"
 
-#include "vm/code_generator.h"
 #include "vm/code_patcher.h"
 #include "vm/compiler.h"
 #include "vm/dart_entry.h"
 #include "vm/deopt_instructions.h"
 #include "vm/flags.h"
 #include "vm/globals.h"
-#include "vm/longjump.h"
 #include "vm/json_stream.h"
+#include "vm/longjump.h"
 #include "vm/message_handler.h"
 #include "vm/object.h"
 #include "vm/object_store.h"
 #include "vm/os.h"
 #include "vm/port.h"
+#include "vm/runtime_entry.h"
+#include "vm/service.h"
 #include "vm/service_event.h"
 #include "vm/service_isolate.h"
-#include "vm/service.h"
 #include "vm/stack_frame.h"
 #include "vm/stack_trace.h"
 #include "vm/stub_code.h"
@@ -4240,7 +4240,7 @@ void Debugger::RemoveBreakpoint(intptr_t bp_id) {
 }
 
 
-// Unlink code breakpoints from the the given breakpoint location.
+// Unlink code breakpoints from the given breakpoint location.
 // They will later be deleted when control returns from the pause event
 // callback. Also, disable the breakpoint so it no longer fires if it
 // should be hit before it gets deleted.

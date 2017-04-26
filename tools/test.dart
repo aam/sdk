@@ -15,7 +15,7 @@
  *            io libraries etc.)
  *
  * This script is normally invoked by test.py.  (test.py finds the dart vm
- * and passses along all command line arguments to this script.)
+ * and passes along all command line arguments to this script.)
  *
  * The command line args of this script are documented in
  * "tools/testing/dart/test_options.dart"; they are printed
@@ -42,13 +42,13 @@ Future _deleteTemporaryDartDirectories() {
   if (environment['DART_TESTING_DELETE_TEMPORARY_DIRECTORIES'] == '1') {
     LeftOverTempDirPrinter.getLeftOverTemporaryDirectories().listen(
         (FileSystemEntity tempEntity) {
-          Directory tempDirectory = tempEntity as Directory;
-          try {
-            tempDirectory.deleteSync(recursive: true);
-          } catch (error) {
-            DebugLogger.error(error);
-          }
-        }, onDone: completer.complete);
+      Directory tempDirectory = tempEntity as Directory;
+      try {
+        tempDirectory.deleteSync(recursive: true);
+      } catch (error) {
+        DebugLogger.error(error);
+      }
+    }, onDone: completer.complete);
   } else {
     completer.complete();
   }
